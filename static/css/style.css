@@ -1,0 +1,39 @@
+.status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot-online { background: #28a745; }
+.dot-offline { background: #dc3545; }
+.dot-unknown { background: #6c757d; }
+
+/* Dashboard grid */
+.grid-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+.grid-card { border: 1px solid #dee2e6; border-radius: .5rem; overflow: hidden; background: #fff; }
+.grid-card-header { padding: .5rem .75rem; background: #f8f9fa; font-weight: 600; }
+.grid-card-body { background:#000; text-align:center; }
+.grid-card-body img { width:100%; height:auto; display:block; background:#000; }
+
+/* Navbar branding */
+.brand-logo {
+  height: 24px;
+  width: auto;
+  vertical-align: middle;
+}
+
+/* Modal video styling */
+.modal-video-wrapper { position: relative; background:#000; }
+.modal-video-wrapper img { max-width: 100%; height: auto; max-height: 80vh; background:#000; }
+.modal-open-link {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  color: rgba(255,255,255,0.85);
+  text-decoration: none;
+  font-size: 20px;
+  line-height: 1;
+  background: rgba(0,0,0,0.35);
+  padding: 6px 8px;
+  border-radius: 20px;
+}
+.modal-open-link:hover { color:#fff; background: rgba(0,0,0,0.6); }

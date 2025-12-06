@@ -1,0 +1,31 @@
+version: "3.9"
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-}
+    volumes:
+      - mongo_data:/data/db
+    ports:
+      - "27017:27017"
+
+  web:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - mongo
+    env_file:
+      - .env
+    environment:
+      # default to internal docker network hostname
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
+      MONGO_DB: ${MONGO_DB:-simpleye}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-changeme}
+      APP_PORT: ${APP_PORT:-8000}
+    ports:
+      - "8000:8000"
+
+volumes:
+  mongo_data:

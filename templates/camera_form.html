@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ 'Add' if mode=='new' else 'Edit' }} Camera - Simpleye</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link rel="icon" href="{{ url_for('static', filename='images/simpleye_favicon.png') }}" type="image/png">
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="/">
+      <img class="brand-logo me-2" src="{{ url_for('static', filename='images/simpleye_transparent_white_eye.png') }}" alt="Simpleye logo">
+      <span>Simpleye</span>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample" aria-controls="navbarsExample" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarsExample">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link active" href="/cameras">Cameras</a></li>
+      </ul>
+      <div class="d-flex align-items-center gap-2">
+        {% if current_user %}
+          <div class="dropdown">
+            <button class="btn btn-outline-light dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
+              {{ current_user.username }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+              <li><a class="dropdown-item" href="/settings">Settings</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="/logout">Logout</a></li>
+            </ul>
+          </div>
+        {% else %}
+          <a href="/login" class="btn btn-outline-light btn-sm">Login</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card">
+    <div class="card-header">{{ 'Add' if mode=='new' else 'Edit' }} Camera</div>
+    <div class="card-body">
+      <form method="post">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Name</label>
+            <input type="text" class="form-control" name="name" value="{{ camera.name or '' }}" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Enabled</label>
+            <select class="form-select" name="enabled">
+              <option value="true" {% if camera.enabled %}selected{% endif %}>Yes</option>
+              <option value="false" {% if camera.enabled is defined and not camera.enabled %}selected{% endif %}>No</option>
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">IP Address</label>
+            <input type="text" class="form-control" name="ip" value="{{ camera.ip or '' }}" placeholder="192.168.1.10" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">HTTP Port</label>
+            <input type="number" class="form-control" name="http_port" value="{{ camera.http_port or 80 }}" min="1" max="65535">
+          </div>
+          <div class="col-12">
+            <label class="form-label">RTSP URL (optional)</label>
+            <input type="text" class="form-control" name="rtsp_url" value="{{ camera.rtsp_url or '' }}" placeholder="rtsp://user:pass@192.168.1.10:554/stream">
+          </div>
+          <div class="col-12">
+            <label class="form-label">Notes</label>
+            <textarea class="form-control" name="notes" rows="3">{{ camera.notes or '' }}</textarea>
+          </div>
+        </div>
+        <div class="mt-4 d-flex gap-2">
+          <button class="btn btn-primary" type="submit">Save</button>
+          <a href="/cameras" class="btn btn-secondary">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.coverage*
+htmlcov/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment files (keep example)
+.env
+.env.*
+!.env.example
+.envrc
+.env.local
+.env.development.local
+.env.production.local
+
+# IDE/editor settings
+.idea/
+.vscode/
+*.code-workspace
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Docker/Compose overrides
+docker-compose.override.yml

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>First-time Setup - Simpleye</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link rel="icon" href="{{ url_for('static', filename='images/simpleye_favicon.png') }}" type="image/png">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="#">
+      <img class="brand-logo me-2" src="{{ url_for('static', filename='images/simpleye_transparent_white_eye.png') }}" alt="Simpleye logo">
+      <span>Simpleye</span>
+    </a>
+  </div>
+</nav>
+
+<div class="container py-5" style="max-width: 560px;">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="card shadow-sm">
+    <div class="card-header">Create Admin Account</div>
+    <div class="card-body">
+      <p class="text-muted">Welcome! No users were found. Create the initial administrator account. You can add more users later.</p>
+      <form method="post">
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input class="form-control" type="text" name="username" required autofocus>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input class="form-control" type="password" name="password" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Email (optional)</label>
+          <input class="form-control" type="email" name="email" placeholder="you@example.com">
+        </div>
+        <div class="d-grid gap-2">
+          <button class="btn btn-primary" type="submit">Create Admin</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
