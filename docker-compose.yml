@@ -3,6 +3,7 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
+    profiles: ["local-db"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-}
@@ -14,8 +15,6 @@ services:
   web:
     build: .
     restart: unless-stopped
-    depends_on:
-      - mongo
     environment:
       # default to internal docker network hostname
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}

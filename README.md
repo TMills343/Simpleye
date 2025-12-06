@@ -16,11 +16,19 @@ Requirements
 - Docker and Docker Compose
 
 Quick start (Docker Compose)
-1. Create a .env file at the repository root (you can copy the existing `.env` as a starting point) and set your values if needed.
-2. (Optional) Edit .env to customize settings. By default, the app will connect to the `mongo` service provided by compose.
-3. Start services:
+There are two ways to run the app, depending on whether you have an external MongoDB or want a local MongoDB container.
+
+Option A — Use an external MongoDB (recommended for deployments)
+1. Create a .env file at the repository root and set MONGO_URI to your external MongoDB connection string (and MONGO_DB if needed).
+2. Start only the web app service:
    - `docker compose up --build`
-4. Open the app at: http://localhost:8000
+3. Open the app at: http://localhost:8000
+
+Option B — Run a local MongoDB with Compose (for local development)
+1. Create a .env file (you can keep the default MONGO_URI)
+2. Start the stack including the local MongoDB service via the compose profile:
+   - `docker compose --profile local-db up --build`
+3. Open the app at: http://localhost:8000
 
 First-time setup (users)
 - On first boot when the database has no users, you will be redirected to a Signup page to create the initial admin account (username + password; email optional for future 2FA/reset).
@@ -34,6 +42,7 @@ Environment variables (.env)
 How env is applied
 - Local development with docker-compose: docker-compose automatically loads variables from the `.env` file in the project root and injects them into the `web` container via the `environment` section in `docker-compose.yml`. No `env_file` is required.
 - Portainer or other orchestrators: define MONGO_URI, MONGO_DB, and FLASK_SECRET_KEY as environment variables for the stack/service. The application reads these directly from the container environment. No `.env` file is needed in the container.
+- The MongoDB service in docker-compose is behind a profile named `local-db`. It will only be created/started if you pass `--profile local-db`. This prevents creating a local MongoDB when using an external MONGO_URI.
 
 Local development (without Docker)
 1. Python 3.12 recommended.
