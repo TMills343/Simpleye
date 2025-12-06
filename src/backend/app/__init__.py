@@ -82,7 +82,7 @@ def create_app():
     app.check_password_hash = check_password_hash  # type: ignore[attr-defined]
 
     # Simple current_user getter shared via app context
-    from .utils import get_current_user
+    from src.backend.app.utils.utils import get_current_user
     app.get_current_user = lambda: get_current_user(app.db, session)  # type: ignore[attr-defined]
 
     @app.before_request

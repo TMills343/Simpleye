@@ -4,7 +4,7 @@ from flask import Blueprint, current_app, render_template, request, redirect, ur
 from bson import ObjectId
 from pymongo import ASCENDING
 
-from src.backend.app.utils import to_doc, normalize_camera_payload, check_port_open
+from src.backend.app.utils.utils import to_doc, normalize_camera_payload, check_port_open
 from .utils import mjpeg_generator
 
 

@@ -1,7 +1,7 @@
 from flask import Blueprint, current_app, render_template
 from pymongo import ASCENDING
 
-from src.backend.app.utils import to_doc  # shared utils
+from src.backend.app.utils.utils import to_doc  # shared utils
 
 
 bp = Blueprint("core", __name__)
