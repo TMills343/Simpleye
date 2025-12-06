@@ -5,6 +5,7 @@ from bson import ObjectId
 from pymongo import ASCENDING
 
 from src.backend.app.utils.utils import to_doc, normalize_camera_payload, check_port_open
+from src.backend.app.admin.utils import is_admin
 from .utils import mjpeg_generator
 
 
@@ -22,8 +23,15 @@ def list_cameras():
 def add_camera():
     cfg = current_app.config
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        if request.method == "POST":
+            return ("Forbidden", 403)
+        flash("Only admins can add cameras", "danger")
+        return redirect(url_for("cameras.list_cameras"))
     if request.method == "POST":
-        payload = normalize_camera_payload(request.form, cfg["DEFAULT_HTTP_PORT"])  # type: ignore[index]
+        # DEFAULT_HTTP_PORT removed from ENV; use standard 80 as default
+        payload = normalize_camera_payload(request.form, 80)
         if not payload["name"] or not payload["ip"]:
             flash("Name and IP are required", "danger")
             return render_template("camera_form.html", camera=payload, mode="new", current_user=current_app.get_current_user())  # type: ignore[attr-defined]
@@ -46,12 +54,19 @@ def add_camera():
 def edit_camera(id):
     cfg = current_app.config
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        if request.method == "POST":
+            return ("Forbidden", 403)
+        flash("Only admins can edit cameras", "danger")
+        return redirect(url_for("cameras.list_cameras"))
     doc = db.cameras.find_one({"_id": ObjectId(id)})
     if not doc:
         flash("Camera not found", "warning")
         return redirect(url_for("cameras.list_cameras"))
     if request.method == "POST":
-        payload = normalize_camera_payload(request.form, cfg["DEFAULT_HTTP_PORT"])  # type: ignore[index]
+        # DEFAULT_HTTP_PORT removed from ENV; use standard 80 as default
+        payload = normalize_camera_payload(request.form, 80)
         payload.update({"updated_at": datetime.utcnow()})
         try:
             db.cameras.update_one({"_id": ObjectId(id)}, {"$set": payload})
@@ -65,6 +80,9 @@ def edit_camera(id):
 @bp.post("/cameras/<id>/delete")
 def delete_camera(id):
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        return ("Forbidden", 403)
     db.cameras.delete_one({"_id": ObjectId(id)})
     flash("Camera deleted", "info")
     return redirect(url_for("cameras.list_cameras"))
@@ -74,10 +92,14 @@ def delete_camera(id):
 def check_camera(id):
     cfg = current_app.config
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        return jsonify({"error": "forbidden"}), 403
     doc = db.cameras.find_one({"_id": ObjectId(id)})
     if not doc:
         return jsonify({"error": "not found"}), 404
-    ok = check_port_open(doc.get("ip"), int(doc.get("http_port") or cfg["DEFAULT_HTTP_PORT"]), cfg["REQUEST_TIMEOUT"])  # type: ignore[index]
+    # DEFAULT_HTTP_PORT and REQUEST_TIMEOUT removed; use in-code defaults
+    ok = check_port_open(doc.get("ip"), int(doc.get("http_port") or 80), 2.0)
     db.cameras.update_one(
         {"_id": ObjectId(id)},
         {"$set": {"last_checked": datetime.utcnow(), "last_status": "online" if ok else "offline"}},
@@ -85,7 +107,7 @@ def check_camera(id):
     return jsonify({"id": id, "online": ok})
 
 
-@bp.get("/cameras/<id>")
+@bp.get("/cameras/<id>/view")
 def view_camera(id):
     db = current_app.db  # type: ignore[attr-defined]
     doc = db.cameras.find_one({"_id": ObjectId(id)})
@@ -94,6 +116,12 @@ def view_camera(id):
         return redirect(url_for("cameras.list_cameras"))
     cam = to_doc(doc)
     return render_template("view_camera.html", camera=cam, current_user=current_app.get_current_user())  # type: ignore[attr-defined]
+
+
+@bp.get("/cameras/<id>")
+def view_camera_redirect(id):
+    # Backward compatibility: old canonical URL redirects to the new canonical /view path
+    return redirect(url_for("cameras.view_camera", id=id), code=302)
 
 
 @bp.get("/cameras/<id>/stream.mjpg")
@@ -106,13 +134,35 @@ def stream_mjpg(id):
     rtsp = (doc.get("rtsp_url") or "").strip()
     if not rtsp:
         return ("RTSP URL not set", 400)
+    # Use per-camera streaming settings if set; otherwise use built-in defaults
+    def _float_or_default(val, default):
+        try:
+            if val in (None, ""):
+                return float(default)
+            f = float(val)
+            return float(f)
+        except (TypeError, ValueError):
+            return float(default)
+    def _int_or_default(val, default):
+        try:
+            if val in (None, ""):
+                return int(default)
+            return int(val)
+        except (TypeError, ValueError):
+            return int(default)
+    # Defaults mirror old global ENV defaults
+    fps_value = _float_or_default(doc.get("max_fps"), 10)
+    jpeg_quality = _int_or_default(doc.get("jpeg_quality"), 70)
+    connect_timeout = _float_or_default(doc.get("connect_timeout"), 10)
+    idle_reconnect = _float_or_default(doc.get("idle_reconnect"), 10)
+    heartbeat_interval = _float_or_default(doc.get("heartbeat_interval"), 2)
     gen = mjpeg_generator(
         rtsp=rtsp,
-        fps=float(cfg["STREAM_MAX_FPS"]),
-        jpeg_quality=int(cfg["STREAM_JPEG_QUALITY"]),
-        connect_timeout=float(cfg["STREAM_CONNECT_TIMEOUT"]),
-        idle_reconnect=float(cfg["STREAM_IDLE_RECONNECT"]),
-        heartbeat_interval=float(cfg["STREAM_HEARTBEAT_INTERVAL"]),
+        fps=fps_value,
+        jpeg_quality=jpeg_quality,
+        connect_timeout=connect_timeout,
+        idle_reconnect=idle_reconnect,
+        heartbeat_interval=heartbeat_interval,
     )
     return Response(gen, mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -129,7 +179,10 @@ def api_list():
 def api_create():
     cfg = current_app.config
     db = current_app.db  # type: ignore[attr-defined]
-    payload = normalize_camera_payload(request.json or {}, cfg["DEFAULT_HTTP_PORT"])  # type: ignore[index]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        return jsonify({"error": "forbidden"}), 403
+    payload = normalize_camera_payload(request.json or {}, 80)
     payload.update({
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow(),
@@ -151,7 +204,10 @@ def api_get(id):
 def api_update(id):
     cfg = current_app.config
     db = current_app.db  # type: ignore[attr-defined]
-    payload = normalize_camera_payload(request.json or {}, cfg["DEFAULT_HTTP_PORT"])  # type: ignore[index]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        return jsonify({"error": "forbidden"}), 403
+    payload = normalize_camera_payload(request.json or {}, 80)
     payload.update({"updated_at": datetime.utcnow()})
     db.cameras.update_one({"_id": ObjectId(id)}, {"$set": payload})
     return jsonify({"status": "ok"})
@@ -160,5 +216,8 @@ def api_update(id):
 @bp.delete("/api/cameras/<id>")
 def api_delete(id):
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
+    if not is_admin(user):
+        return jsonify({"error": "forbidden"}), 403
     db.cameras.delete_one({"_id": ObjectId(id)})
     return jsonify({"status": "ok"})

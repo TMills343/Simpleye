@@ -28,6 +28,41 @@ def normalize_camera_payload(data: Dict[str, Any], default_http_port: int) -> Di
     except Exception:
         http_port = default_http_port
     rtsp_url = (data.get("rtsp_url") or "").strip()
+    # Optional per-camera FPS cap (float). Accept keys: max_fps or fps
+    max_fps_val = data.get("max_fps", data.get("fps"))
+    max_fps: Optional[float]
+    try:
+        max_fps = float(max_fps_val) if max_fps_val not in (None, "") else None
+        if max_fps is not None and max_fps <= 0:
+            max_fps = None
+    except (TypeError, ValueError):
+        max_fps = None
+    # Optional per-camera JPEG quality (1-100)
+    jpeg_q_val = data.get("jpeg_quality")
+    jpeg_quality: Optional[int]
+    try:
+        jq = int(jpeg_q_val) if jpeg_q_val not in (None, "") else None
+        if jq is None or jq < 1 or jq > 100:
+            jpeg_quality = None
+        else:
+            jpeg_quality = jq
+    except (TypeError, ValueError):
+        jpeg_quality = None
+    # Optional per-camera streaming timeouts/intervals (floats, >0)
+    def _float_opt(key: str) -> Optional[float]:
+        val = data.get(key)
+        try:
+            if val in (None, ""):
+                return None
+            f = float(val)
+            if f <= 0:
+                return None
+            return f
+        except (TypeError, ValueError):
+            return None
+    connect_timeout = _float_opt("connect_timeout")
+    idle_reconnect = _float_opt("idle_reconnect")
+    heartbeat_interval = _float_opt("heartbeat_interval")
     notes = (data.get("notes") or "").strip()
     enabled = str(data.get("enabled") or data.get("enabled", "on")).lower() in ["1", "true", "on", "yes"]
     return {
@@ -35,6 +70,11 @@ def normalize_camera_payload(data: Dict[str, Any], default_http_port: int) -> Di
         "ip": ip,
         "http_port": http_port,
         "rtsp_url": rtsp_url,
+        "max_fps": max_fps,
+        "jpeg_quality": jpeg_quality,
+        "connect_timeout": connect_timeout,
+        "idle_reconnect": idle_reconnect,
+        "heartbeat_interval": heartbeat_interval,
         "notes": notes,
         "enabled": enabled,
     }

@@ -12,15 +12,6 @@ def load_config() -> Dict[str, Any]:
         "MONGO_URI": os.getenv("MONGO_URI", "mongodb://mongo:27017"),
         "MONGO_DB": os.getenv("MONGO_DB", "simpleye"),
         "FLASK_SECRET_KEY": os.getenv("FLASK_SECRET_KEY", os.urandom(24).hex()),
-        "APP_PORT": int(os.getenv("APP_PORT", "8000")),
-        "DEFAULT_HTTP_PORT": int(os.getenv("DEFAULT_HTTP_PORT", "80")),
-        "REQUEST_TIMEOUT": float(os.getenv("REQUEST_TIMEOUT", "2.0")),
-        # Streaming settings
-        "STREAM_MAX_FPS": float(os.getenv("STREAM_MAX_FPS", "10")),
-        "STREAM_JPEG_QUALITY": int(os.getenv("STREAM_JPEG_QUALITY", "70")),
-        "STREAM_CONNECT_TIMEOUT": float(os.getenv("STREAM_CONNECT_TIMEOUT", "10")),
-        "STREAM_IDLE_RECONNECT": float(os.getenv("STREAM_IDLE_RECONNECT", "10")),
-        "STREAM_HEARTBEAT_INTERVAL": float(os.getenv("STREAM_HEARTBEAT_INTERVAL", "2")),
     }
 
 
@@ -88,7 +79,7 @@ def create_app():
     @app.before_request
     def enforce_auth():
         # allow certain paths public
-        public_paths = {"/health", "/login", "/logout", "/signup"}
+        public_paths = {"/health", "/login", "/logout", "/signup", "/set-password"}
         path = request.path
         if path.startswith("/static/"):
             return None
@@ -104,8 +95,16 @@ def create_app():
         # If users exist, require login
         if path in public_paths:
             return None
-        if app.get_current_user() is None:  # type: ignore[attr-defined]
+        user = app.get_current_user()  # type: ignore[attr-defined]
+        if user is None:
             return redirect(url_for("auth.login", next=path))
+        # Force password setup if flagged
+        try:
+            must_reset = bool(user.get("force_password_reset")) or not user.get("password_hash")
+        except Exception:
+            must_reset = False
+        if must_reset and path not in {"/set-password", "/logout"}:
+            return redirect(url_for("auth.set_password"))
         return None
 
     # Register blueprints

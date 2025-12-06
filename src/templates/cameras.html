@@ -24,13 +24,19 @@
         <li class="nav-item"><a class="nav-link active" href="/cameras">Cameras</a></li>
       </ul>
       <div class="d-flex align-items-center gap-2">
-        <a href="/cameras/new" class="btn btn-success">Add Camera</a>
+        {% if current_user and ('admin' in (current_user.roles or [])) %}
+          <a href="/cameras/new" class="btn btn-success">Add Camera</a>
+        {% endif %}
         {% if current_user %}
           <div class="dropdown">
             <button class="btn btn-outline-light dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
               {{ current_user.username }}
             </button>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+              {% if current_user and ('admin' in (current_user.roles or [])) %}
+                <li><a class="dropdown-item" href="/admin/users">User Management</a></li>
+                <li><hr class="dropdown-divider"></li>
+              {% endif %}
               <li><a class="dropdown-item" href="/settings">Settings</a></li>
               <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item text-danger" href="/logout">Logout</a></li>
@@ -90,21 +96,30 @@
               <td><small>{{ cam.last_checked or '' }}</small></td>
               <td>
                 <div class="btn-group btn-group-sm">
-                  <form method="post" action="/cameras/{{ cam.id }}/check" onsubmit="return checkCam(event, '{{ cam.id }}')">
-                    <button class="btn btn-outline-primary">Check</button>
-                  </form>
                   {% if cam.rtsp_url %}
                   <a href="/cameras/{{ cam.id }}/view" class="btn btn-outline-success">View</a>
                   {% endif %}
-                  <a href="/cameras/{{ cam.id }}/edit" class="btn btn-outline-secondary">Edit</a>
-                  <form method="post" action="/cameras/{{ cam.id }}/delete" onsubmit="return confirm('Delete this camera?')">
-                    <button class="btn btn-outline-danger">Delete</button>
-                  </form>
+                  {% if current_user and ('admin' in (current_user.roles or [])) %}
+                    <form method="post" action="/cameras/{{ cam.id }}/check" onsubmit="return checkCam(event, '{{ cam.id }}')">
+                      <button class="btn btn-outline-primary">Check</button>
+                    </form>
+                    <a href="/cameras/{{ cam.id }}/edit" class="btn btn-outline-secondary">Edit</a>
+                    <form method="post" action="/cameras/{{ cam.id }}/delete" onsubmit="return confirm('Delete this camera?')">
+                      <button class="btn btn-outline-danger">Delete</button>
+                    </form>
+                  {% endif %}
                 </div>
               </td>
             </tr>
           {% else %}
-            <tr><td colspan="7" class="text-center p-4">No cameras yet. <a href="/cameras/new">Add one</a>.</td></tr>
+            <tr>
+              <td colspan="7" class="text-center p-4">
+                No cameras yet.
+                {% if current_user and ('admin' in (current_user.roles or [])) %}
+                  <a href="/cameras/new">Add one</a>.
+                {% endif %}
+              </td>
+            </tr>
           {% endfor %}
           </tbody>
         </table>

@@ -30,6 +30,10 @@
               {{ current_user.username }}
             </button>
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+              {% if current_user and ('admin' in (current_user.roles or [])) %}
+                <li><a class="dropdown-item" href="/admin/users">User Management</a></li>
+                <li><hr class="dropdown-divider"></li>
+              {% endif %}
               <li><a class="dropdown-item" href="/settings">Settings</a></li>
               <li><hr class="dropdown-divider"></li>
               <li><a class="dropdown-item text-danger" href="/logout">Logout</a></li>
@@ -86,6 +90,28 @@
           <div class="col-12">
             <label class="form-label">RTSP URL (optional)</label>
             <input type="text" class="form-control" name="rtsp_url" value="{{ camera.rtsp_url or '' }}" placeholder="rtsp://user:pass@192.168.1.10:554/stream">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">FPS cap (optional)</label>
+            <input type="number" step="0.1" min="0" class="form-control" name="max_fps" value="{{ camera.max_fps if camera.max_fps is defined and camera.max_fps is not none else '' }}" placeholder="Leave blank to use global default">
+            <div class="form-text">Limit the stream to this many frames per second for this camera. Blank uses the global default.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">JPEG Quality (1–100, optional)</label>
+            <input type="number" min="1" max="100" class="form-control" name="jpeg_quality" value="{{ camera.jpeg_quality if camera.jpeg_quality is defined and camera.jpeg_quality is not none else '' }}" placeholder="Default 70">
+            <div class="form-text">Higher is better quality but larger size. Leave blank to use default (70).</div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Connect timeout (s, optional)</label>
+            <input type="number" step="0.1" min="0" class="form-control" name="connect_timeout" value="{{ camera.connect_timeout if camera.connect_timeout is defined and camera.connect_timeout is not none else '' }}" placeholder="Default 10">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Idle reconnect (s, optional)</label>
+            <input type="number" step="0.1" min="0" class="form-control" name="idle_reconnect" value="{{ camera.idle_reconnect if camera.idle_reconnect is defined and camera.idle_reconnect is not none else '' }}" placeholder="Default 10">
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Heartbeat interval (s, optional)</label>
+            <input type="number" step="0.1" min="0" class="form-control" name="heartbeat_interval" value="{{ camera.heartbeat_interval if camera.heartbeat_interval is defined and camera.heartbeat_interval is not none else '' }}" placeholder="Default 2">
           </div>
           <div class="col-12">
             <label class="form-label">Notes</label>
