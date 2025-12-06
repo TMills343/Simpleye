@@ -67,7 +67,7 @@
   {% endwith %}
 
   <div class="card">
-    <div class="card-header">Cameras</div>
+    <div class="card-header"><strong>Cameras</strong></div>
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-striped mb-0 align-middle">
@@ -92,7 +92,15 @@
               <td>{{ cam.name }}</td>
               <td><a href="http://{{ cam.ip }}:{{ cam.http_port }}" target="_blank">{{ cam.ip }}</a></td>
               <td>{{ cam.http_port }}</td>
-              <td><code>{{ cam.rtsp_url }}</code></td>
+              <td>
+                {% if current_user and ('admin' in (current_user.roles or [])) %}
+                  <code>{{ cam.rtsp_url }}</code>
+                {% elif cam.rtsp_url %}
+                  <span class="text-muted">hidden</span>
+                {% else %}
+                  <span class="text-muted">&mdash;</span>
+                {% endif %}
+              </td>
               <td><small>{{ cam.last_checked or '' }}</small></td>
               <td>
                 <div class="btn-group btn-group-sm">

@@ -171,7 +171,13 @@ def stream_mjpg(id):
 @bp.get("/api/cameras")
 def api_list():
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
     cams = [to_doc(c) for c in db.cameras.find().sort("name", ASCENDING)]
+    # Do not expose RTSP URLs to non-admins
+    if not is_admin(user):
+        for c in cams:
+            if "rtsp_url" in c:
+                c["rtsp_url"] = None
     return jsonify(cams)
 
 
@@ -194,10 +200,14 @@ def api_create():
 @bp.get("/api/cameras/<id>")
 def api_get(id):
     db = current_app.db  # type: ignore[attr-defined]
+    user = current_app.get_current_user()  # type: ignore[attr-defined]
     doc = db.cameras.find_one({"_id": ObjectId(id)})
     if not doc:
         return jsonify({"error": "not found"}), 404
-    return jsonify(to_doc(doc))
+    d = to_doc(doc)
+    if not is_admin(user):
+        d["rtsp_url"] = None
+    return jsonify(d)
 
 
 @bp.post("/api/cameras/<id>")

@@ -96,7 +96,7 @@
     {% endfor %}
   </div>
 
-  {% if not any_shown %}
+  {% if not any_shown and current_user and ('admin' in (current_user.roles or [])) %}
     <div class="alert alert-info mt-3"><a href="/cameras">Go to Cameras</a> to add or edit.</div>
   {% endif %}
 </div>

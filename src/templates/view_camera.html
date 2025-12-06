@@ -79,9 +79,11 @@
       <div class="card-body video-container">
         <img class="video-frame" src="/cameras/{{ camera.id }}/stream.mjpg" alt="Live stream of {{ camera.name }}"/>
       </div>
-      <div class="card-footer meta">
-        <small>RTSP: <code>{{ camera.rtsp_url }}</code></small>
-      </div>
+      {% if current_user and ('admin' in (current_user.roles or [])) %}
+        <div class="card-footer meta">
+          <small>RTSP: <code>{{ camera.rtsp_url }}</code></small>
+        </div>
+      {% endif %}
     </div>
   {% else %}
     <div class="alert alert-warning">This camera does not have an RTSP URL configured.</div>
