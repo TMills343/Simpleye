@@ -16,14 +16,11 @@ services:
     restart: unless-stopped
     depends_on:
       - mongo
-    env_file:
-      - .env
     environment:
       # default to internal docker network hostname
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-simpleye}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-changeme}
-      APP_PORT: ${APP_PORT:-8000}
     ports:
       - "8000:8000"
 

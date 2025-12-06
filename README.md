@@ -16,9 +16,7 @@ Requirements
 - Docker and Docker Compose
 
 Quick start (Docker Compose)
-1. Copy env file:
-   - Windows PowerShell: `Copy-Item .env.example .env`
-   - macOS/Linux: `cp .env.example .env`
+1. Create a .env file at the repository root (you can copy the existing `.env` as a starting point) and set your values if needed.
 2. (Optional) Edit .env to customize settings. By default, the app will connect to the `mongo` service provided by compose.
 3. Start services:
    - `docker compose up --build`
@@ -32,18 +30,16 @@ Environment variables (.env)
 - MONGO_URI: MongoDB connection string (default: mongodb://mongo:27017)
 - MONGO_DB: Database name (default: simpleye)
 - FLASK_SECRET_KEY: Flask secret (set a strong value in production)
-- APP_PORT: Internal app port (default: 8000)
-- DEFAULT_HTTP_PORT: Default camera HTTP port (default: 80)
-- REQUEST_TIMEOUT: Connection timeout in seconds for status checks (default: 2.0)
-- STREAM_MAX_FPS: Max frames per second for MJPEG stream (default: 10)
-- STREAM_JPEG_QUALITY: JPEG quality (1-100) for MJPEG (default: 70)
-- STREAM_CONNECT_TIMEOUT: Seconds to wait to connect to RTSP (default: 10)
+
+How env is applied
+- Local development with docker-compose: docker-compose automatically loads variables from the `.env` file in the project root and injects them into the `web` container via the `environment` section in `docker-compose.yml`. No `env_file` is required.
+- Portainer or other orchestrators: define MONGO_URI, MONGO_DB, and FLASK_SECRET_KEY as environment variables for the stack/service. The application reads these directly from the container environment. No `.env` file is needed in the container.
 
 Local development (without Docker)
 1. Python 3.12 recommended.
 2. Create and activate a virtualenv.
 3. `pip install -r requirements.txt`
-4. Create a `.env` file (copy from `.env.example`) and set `MONGO_URI` to a MongoDB instance you have running locally.
+4. Create a `.env` file and set `MONGO_URI` to a MongoDB instance you have running locally. You may also set `MONGO_DB` and `FLASK_SECRET_KEY`.
 5. Run the app: `python app.py` then browse http://localhost:8000
 
 Routes
