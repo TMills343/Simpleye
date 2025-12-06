@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
+COPY src/backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
@@ -24,6 +24,7 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib
     import os; url=f'http://localhost:{os.environ.get("APP_PORT","8000")}/health';\
     urllib.request.urlopen(url).read(); print('ok')" || exit 1
 
-# Default to gunicorn in production; fall back to flask if needed
+# Default to gunicorn in production; point to the correct app factory
 ENV APP_PORT=8000
-CMD ["gunicorn", "-w", "3", "-b", "0.0.0.0:8000", "--timeout", "0", "--graceful-timeout", "0", "app:create_app()"]
+# Use the package path where create_app() is defined
+CMD ["gunicorn", "-w", "3", "-b", "0.0.0.0:8000", "--timeout", "0", "--graceful-timeout", "0", "src.backend.app:create_app()"]

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Login - Simpleye</title>
+  <title>First-time Setup - Simpleye</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
   <link rel="icon" href="{{ url_for('static', filename='images/simpleye_favicon.png') }}" type="image/png">
@@ -18,19 +18,27 @@
   </div>
 </nav>
 
-<div class="container py-5" style="max-width: 480px;">
+<div class="container py-5" style="max-width: 560px;">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
-      {% endfor %}
+      <div class="toast-container position-fixed top-0 end-0 p-3">
+        {% for category, message in messages %}
+          <div class="toast align-items-center text-bg-{{ 'danger' if category=='error' else (category if category in ['success','warning','info','primary','secondary','light','dark'] else 'info') }} border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="4000">
+            <div class="d-flex">
+              <div class="toast-body">{{ message }}</div>
+              <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     {% endif %}
   {% endwith %}
 
   <div class="card shadow-sm">
-    <div class="card-header">Login</div>
+    <div class="card-header">Create Admin Account</div>
     <div class="card-body">
-      <form method="post" action="{{ url_for('login', next=request.args.get('next')) }}">
+      <p class="text-muted">Welcome! No users were found. Create the initial administrator account. You can add more users later.</p>
+      <form method="post">
         <div class="mb-3">
           <label class="form-label">Username</label>
           <input class="form-control" type="text" name="username" required autofocus>
@@ -39,17 +47,19 @@
           <label class="form-label">Password</label>
           <input class="form-control" type="password" name="password" required>
         </div>
+        <div class="mb-3">
+          <label class="form-label">Email (optional)</label>
+          <input class="form-control" type="email" name="email" placeholder="you@example.com">
+        </div>
         <div class="d-grid gap-2">
-          <button class="btn btn-primary" type="submit">Log in</button>
+          <button class="btn btn-primary" type="submit">Create Admin</button>
         </div>
       </form>
-      <div class="mt-3">
-        <small class="text-muted">If this is your first time and no users exist, you'll be prompted to create an admin on the signup page.</small>
-      </div>
     </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

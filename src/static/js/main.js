@@ -87,4 +87,14 @@ function setupCameraModal(){
   }
 }
 
-document.addEventListener('DOMContentLoaded', setupCameraModal);
+function showFlashedToasts(){
+  if(!window.bootstrap) return;
+  document.querySelectorAll('.toast').forEach(function(el){
+    try { new bootstrap.Toast(el).show(); } catch(e) {}
+  });
+}
+
+document.addEventListener('DOMContentLoaded', function(){
+  setupCameraModal();
+  showFlashedToasts();
+});

@@ -9,6 +9,9 @@
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 16px;
 }
+.grid-container.grid-sm { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+.grid-container.grid-md { grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); }
+.grid-container.grid-lg { grid-template-columns: repeat(auto-fill, minmax(640px, 1fr)); }
 .grid-card { border: 1px solid #dee2e6; border-radius: .5rem; overflow: hidden; background: #fff; }
 .grid-card-header { padding: .5rem .75rem; background: #f8f9fa; font-weight: 600; }
 .grid-card-body { background:#000; text-align:center; }
@@ -37,3 +40,13 @@
   border-radius: 20px;
 }
 .modal-open-link:hover { color:#fff; background: rgba(0,0,0,0.6); }
+
+/* Toasts */
+.toast-container {
+  z-index: 1080; /* above navbar and modals backdrop as needed */
+}
+
+/* Settings page: make setting titles bold */
+.settings-form .form-label {
+  font-weight: 600;
+}

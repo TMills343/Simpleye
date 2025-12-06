@@ -47,20 +47,51 @@
 <div class="container py-4">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
-      {% for category, message in messages %}
-        <div class="alert alert-{{ category }}">{{ message }}</div>
-      {% endfor %}
+      <div class="toast-container position-fixed top-0 end-0 p-3">
+        {% for category, message in messages %}
+          <div class="toast align-items-center text-bg-{{ 'danger' if category=='error' else (category if category in ['success','warning','info','primary','secondary','light','dark'] else 'info') }} border-0" role="alert" aria-live="assertive" aria-atomic="true" data-bs-delay="4000">
+            <div class="d-flex">
+              <div class="toast-body">{{ message }}</div>
+              <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
     {% endif %}
   {% endwith %}
 
-  <div class="card">
-    <div class="card-header">Settings</div>
-    <div class="card-body">
-      <p class="mb-0">User settings will live here. Coming soon.</p>
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-8 col-xl-7">
+      <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center">
+          <span class="me-2">⚙️</span>
+          <strong>Settings</strong>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Personalize your experience. These settings only affect your account.</p>
+          <form method="post" action="/settings" class="settings-form">
+            {% set cur_size = (current_user.settings.dashboard_tile_size if current_user and current_user.settings and current_user.settings.dashboard_tile_size else 'sm') %}
+            <div class="mb-3">
+              <label class="form-label">Dashboard tile size</label>
+              <select class="form-select" name="dashboard_tile_size">
+                <option value="sm" {% if cur_size=='sm' %}selected{% endif %}>Small (more tiles)</option>
+                <option value="md" {% if cur_size=='md' %}selected{% endif %}>Medium</option>
+                <option value="lg" {% if cur_size=='lg' %}selected{% endif %}>Large (bigger tiles)</option>
+              </select>
+              <div class="form-text">Controls the size of camera tiles on the Dashboard for your user only.</div>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Save Changes</button>
+              <a href="/" class="btn btn-outline-secondary">Back to Dashboard</a>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>
