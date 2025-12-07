@@ -19,7 +19,7 @@ services:
       # default to internal docker network hostname
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-simpleye}
-      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-changeme}
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-zxc132vzxc56a4sdf6asf8948qwe}
     ports:
       - "8000:8000"
 
