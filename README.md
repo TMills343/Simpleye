@@ -6,6 +6,7 @@ Features
 - Add, edit, delete cameras (name, IP, HTTP port, RTSP URL, notes, enabled)
 - One-click “Check” to test TCP connectivity to each camera’s HTTP port
 - Live video preview via MJPEG for cameras with RTSP URL (no plugin; works in browser)
+- Recording and review
 - Dashboard grid showing all enabled RTSP cameras (Frigate-style multi-view)
 - MongoDB-backed storage (configurable via .env)
 - REST JSON API for cameras
