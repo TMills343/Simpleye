@@ -1,3 +1,45 @@
+### Simpleye — LAN IP Camera Dashboard (Flask + MongoDB)
+
+Simple, dockerized Flask application with MongoDB storage for tracking LAN IP cameras. Add cameras, record notes and RTSP URL, and quickly check whether the camera’s HTTP port is reachable from the server.
+
+Features
+- Add, edit, delete cameras (name, IP, HTTP port, RTSP URL, notes, enabled)
+- One-click “Check” to test TCP connectivity to each camera’s HTTP port
+- Live video preview via MJPEG for cameras with RTSP URL (no plugin; works in browser)
+- Dashboard grid showing all enabled RTSP cameras (Frigate-style multi-view)
+- MongoDB-backed storage (configurable via .env)
+- REST JSON API for cameras
+- Dockerfile and docker-compose for easy deployment
+- Basic user management: first-boot admin signup, login/logout, password hashing
+
+Requirements
+- Docker and Docker Compose
+
+Quick start (Docker Compose)
+There are two ways to run the app, depending on whether you have an external MongoDB or want a local MongoDB container.
+
+Option A — Use an external MongoDB (recommended for deployments)
+1. Create a .env file at the repository root and set MONGO_URI to your external MongoDB connection string (and MONGO_DB if needed).
+2. Start only the web app service:
+   - `docker compose up --build`
+3. Open the app at: http://localhost:8000
+
+Option B — Run a local MongoDB with Compose (for local development)
+1. Create a .env file (you can keep the default MONGO_URI)
+2. Start the stack including the local MongoDB service via the compose profile:
+   - `docker compose --profile local-db up --build`
+3. Open the app at: http://localhost:8000
+
+First-time setup (users)
+- On first boot when the database has no users, you will be redirected to a Signup page to create the initial admin account (username + password; email optional for future 2FA/reset).
+- After creating the admin, you'll be taken to the Login page. All application routes (UI/API/streams) require authentication.
+
+Environment variables (.env)
+- MONGO_URI: MongoDB connection string (default: mongodb://mongo:27017)
+- MONGO_DB: Database name (default: simpleye)
+- FLASK_SECRET_KEY: Flask secret (set a strong value in production)
+
+How env is applied
 - Local development with docker-compose: docker-compose automatically loads variables from the `.env` file in the project root and injects them into the `web` container via the `environment` section in `docker-compose.yml`. No `env_file` is required.
 - Portainer or other orchestrators: define MONGO_URI, MONGO_DB, and FLASK_SECRET_KEY as environment variables for the stack/service. The application reads these directly from the container environment. No `.env` file is needed in the container.
 - The MongoDB service in docker-compose is behind a profile named `local-db`. It will only be created/started if you pass `--profile local-db`. This prevents creating a local MongoDB when using an external MONGO_URI.
