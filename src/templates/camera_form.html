@@ -101,6 +101,30 @@
             <input type="number" min="1" max="100" class="form-control" name="jpeg_quality" value="{{ camera.jpeg_quality if camera.jpeg_quality is defined and camera.jpeg_quality is not none else '' }}" placeholder="Default 70">
             <div class="form-text">Higher is better quality but larger size. Leave blank to use default (70).</div>
           </div>
+          <div class="col-md-6">
+            <label class="form-label">Recording Mode</label>
+            <select class="form-select" name="recording_mode">
+              {# Default is HLS if not set #}
+              <option value="hls" {% if camera.recording_mode is not defined or camera.recording_mode is none or camera.recording_mode=='hls' %}selected{% endif %}>HLS (video segments) — default</option>
+              <option value="jpeg" {% if camera.recording_mode=='jpeg' %}selected{% endif %}>JPEG (frames)</option>
+            </select>
+            <div class="form-text">HLS (H.264 video segments) is the default and recommended for much smaller storage and smoother playback.</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">HLS Bitrate (kbps)</label>
+            <input type="number" min="100" step="50" class="form-control" name="hls_bitrate_kbps" value="{{ camera.hls_bitrate_kbps if camera.hls_bitrate_kbps is defined and camera.hls_bitrate_kbps is not none else '' }}" placeholder="e.g. 1500">
+            <div class="form-text">Approx video bitrate. 1500 kbps ≈ 1.5 Mbps (1080p baseline).</div>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">HLS Segment (s)</label>
+            <input type="number" min="1" step="1" class="form-control" name="hls_segment_seconds" value="{{ camera.hls_segment_seconds if camera.hls_segment_seconds is defined and camera.hls_segment_seconds is not none else '' }}" placeholder="2">
+            <div class="form-text">Length of each HLS segment in seconds. 2–4s recommended.</div>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Retention (hours)</label>
+            <input type="number" min="1" class="form-control" name="retention_hours" value="{{ camera.retention_hours if camera.retention_hours is defined and camera.retention_hours is not none else '24' }}">
+            <div class="form-text">How long to keep recorded footage for this camera. Default 24 hours.</div>
+          </div>
           <div class="col-md-4">
             <label class="form-label">Connect timeout (s, optional)</label>
             <input type="number" step="0.1" min="0" class="form-control" name="connect_timeout" value="{{ camera.connect_timeout if camera.connect_timeout is defined and camera.connect_timeout is not none else '' }}" placeholder="Default 10">

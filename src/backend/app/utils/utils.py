@@ -65,6 +65,20 @@ def normalize_camera_payload(data: Dict[str, Any], default_http_port: int) -> Di
     heartbeat_interval = _float_opt("heartbeat_interval")
     notes = (data.get("notes") or "").strip()
     enabled = str(data.get("enabled") or data.get("enabled", "on")).lower() in ["1", "true", "on", "yes"]
+    # Optional per-camera retention in hours (int)
+    retention_val = data.get("retention_hours")
+    retention_hours: Optional[int]
+    try:
+        if retention_val in (None, ""):
+            retention_hours = None
+        else:
+            rh = int(retention_val)
+            retention_hours = rh if rh > 0 else None
+    except (TypeError, ValueError):
+        retention_hours = None
+    # Recording mode normalization: default to 'hls' unless explicitly set to 'jpeg'
+    rec_mode_raw = (data.get("recording_mode") or "").strip().lower()
+    recording_mode = rec_mode_raw if rec_mode_raw in ("jpeg", "hls") else "hls"
     return {
         "name": name,
         "ip": ip,
@@ -77,6 +91,14 @@ def normalize_camera_payload(data: Dict[str, Any], default_http_port: int) -> Di
         "heartbeat_interval": heartbeat_interval,
         "notes": notes,
         "enabled": enabled,
+        "retention_hours": retention_hours,
+        # Recording mode and options (optional)
+        # recording_mode: 'hls' (default) or 'jpeg'
+        "recording_mode": recording_mode,
+        # HLS bitrate in kbps (int)
+        "hls_bitrate_kbps": (lambda v: (int(v) if str(v).strip() != "" else None)) (data.get("hls_bitrate_kbps")),
+        # HLS segment length in seconds (int)
+        "hls_segment_seconds": (lambda v: (int(v) if str(v).strip() != "" else None)) (data.get("hls_segment_seconds")),
     }
 
 

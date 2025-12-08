@@ -1,4 +1,5 @@
 import os
+import atexit
 from typing import Dict, Any
 
 from flask import Flask, request, redirect, url_for, session
@@ -12,6 +13,8 @@ def load_config() -> Dict[str, Any]:
         "MONGO_URI": os.getenv("MONGO_URI", "mongodb://mongo:27017"),
         "MONGO_DB": os.getenv("MONGO_DB", "simpleye"),
         "FLASK_SECRET_KEY": os.getenv("FLASK_SECRET_KEY", os.urandom(24).hex()),
+        # Base directory for video recordings (mounted volume recommended)
+        "RECORDINGS_DIR": os.getenv("RECORDINGS_DIR", "/data/recordings"),
     }
 
 
@@ -130,5 +133,34 @@ def create_app():
         )
     except Exception:
         pass
+
+    # Initialize background camera recorder/retention manager
+    try:
+        from src.backend.app.cameras.recorder import RecorderManager  # type: ignore
+        recordings_dir = app.config.get("RECORDINGS_DIR") or "/data/recordings"
+        app.recorder_manager = RecorderManager(app.db, recordings_dir)  # type: ignore[attr-defined]
+        app.recorder_manager.start()  # type: ignore[attr-defined]
+    except Exception as e:
+        # Do not crash app if recording cannot be started; log to stdout
+        try:
+            print(f"[Recorder] Failed to start RecorderManager: {e}")
+        except Exception:
+            pass
+
+    # IMPORTANT: Do NOT stop the recorder manager on each request teardown.
+    # Flask may call teardown handlers after every request which would prematurely
+    # stop background recording threads. Instead, stop them once the process
+    # is exiting using atexit (portable across server runners).
+    def _shutdown_recorders():
+        mgr = getattr(app, "recorder_manager", None)
+        if mgr is not None:
+            try:
+                print("[Recorder] Stopping RecorderManager (process exit)...")
+                mgr.stop()
+            except Exception:
+                pass
+
+    # Register process-exit shutdown
+    atexit.register(_shutdown_recorders)
 
     return app
