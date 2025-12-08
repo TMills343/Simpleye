@@ -1,0 +1,1017 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Review {{ camera.name }} - Simpleye</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  <link rel="icon" href="{{ url_for('static', filename='images/simpleye_favicon.png') }}" type="image/png">
+  <style>
+    .review-layout { display:flex; gap:1rem; }
+    .timeline { width: 320px; max-height: calc(100vh - 200px); overflow-y:auto; overflow-x:hidden; border-right: 1px solid #e5e5e5; padding-right: .5rem; }
+    /* Make From/To controls fit without horizontal scrollbar */
+    .timeline .range-row { gap: .5rem !important; margin-right: .25rem; }
+    .timeline .range-row > .flex-fill { min-width: 0; }
+    .timeline input[type="datetime-local"].form-control-sm { font-size: .875rem; }
+    .tl-toolbar { display:flex; gap:.5rem; margin-bottom:.5rem; }
+    .tl-group { margin-bottom: .25rem; }
+    details.tl-day, details.tl-hour, details.tl-minute { margin-left:.25rem; }
+    details.tl-hour { margin-left:.75rem; }
+    details.tl-minute { margin-left:1.25rem; }
+    .tl-summary { cursor:pointer; padding:.25rem .5rem; border-radius:.25rem; }
+    .tl-summary:hover { background:#f6f9ff; }
+    .tl-items { padding-left:.25rem; border-left: 1px dashed #bbb; margin-left:.5rem; }
+    .tl-item { cursor:pointer; padding:.15rem .5rem; margin:.1rem 0; border-radius:.25rem; display:flex; justify-content:space-between; align-items:center; }
+    .tl-item:hover { background:#f6f9ff; }
+    .tl-item.active { background:#0d6efd; color:#fff; }
+    .tl-badge { font-size:.75rem; color:#666; }
+    .player { flex:1; min-width: 0; }
+    .video-stage { text-align:center; background:#000; min-height:360px; display:flex; align-items:center; justify-content:center; position: relative; overflow:hidden; }
+    .video-stage img { max-width:100%; height:auto; display:block; will-change: opacity; image-rendering: auto; }
+    .clips { width: 300px; max-height: calc(100vh - 200px); overflow-y:auto; overflow-x:hidden; border-left: 1px solid #e5e5e5; padding-left: .5rem; }
+    .clip-item { display:flex; align-items:center; justify-content:space-between; padding:.35rem .5rem; border:1px solid #e5e5e5; border-radius:.25rem; margin-bottom:.35rem; background:#fff; }
+    .clip-item small { color:#666; }
+    .clip-actions { display:flex; gap:.5rem; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="/">
+      <img class="brand-logo me-2" src="{{ url_for('static', filename='images/simpleye_transparent_white_eye.png') }}" alt="Simpleye logo">
+      <span>Simpleye</span>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample" aria-controls="navbarsExample" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navbarsExample">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="/cameras">Cameras</a></li>
+      </ul>
+      <div class="d-flex align-items-center gap-2">
+        {% if current_user %}
+          <div class="dropdown">
+            <button class="btn btn-outline-light dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false">
+              {{ current_user.username }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu">
+              {% if current_user and ('admin' in (current_user.roles or [])) %}
+                <li><a class="dropdown-item" href="/admin/users">User Management</a></li>
+                <li><hr class="dropdown-divider"></li>
+              {% endif %}
+              <li><a class="dropdown-item" href="/settings">Settings</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="/logout">Logout</a></li>
+            </ul>
+          </div>
+        {% else %}
+          <a href="/login" class="btn btn-outline-light btn-sm">Login</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</nav>
+
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Review: {{ camera.name }}</h4>
+    <div class="d-flex gap-2">
+      <a href="/cameras/{{ camera.id }}/view" class="btn btn-secondary btn-sm">Back</a>
+    </div>
+  </div>
+
+  <div class="review-layout">
+    <div class="timeline">
+      <div class="d-flex align-items-end mb-2 range-row">
+        <div class="flex-fill">
+          <label class="form-label mb-1">From</label>
+          <input id="fromTime" type="datetime-local" class="form-control form-control-sm">
+        </div>
+        <div class="flex-fill">
+          <label class="form-label mb-1">To</label>
+          <input id="toTime" type="datetime-local" class="form-control form-control-sm">
+        </div>
+      </div>
+      <button id="btnLoad" class="btn btn-outline-primary btn-sm w-100 mb-2">Load timeline</button>
+      <div class="tl-toolbar">
+        <button id="btnExpandAll" class="btn btn-outline-secondary btn-sm">Expand all</button>
+        <button id="btnCollapseAll" class="btn btn-outline-secondary btn-sm">Collapse all</button>
+      </div>
+      <div id="timelineList"></div>
+    </div>
+    <div class="player">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span>Playback</span>
+          <small class="text-muted" id="statusText">Idle</small>
+        </div>
+        <div class="card-body">
+          <div class="video-stage mb-3">
+            <img id="frameImg" src="" alt="Recorded frame"/>
+            <video id="videoEl" class="w-100" style="display:none; max-height:70vh;" controls playsinline preload="auto"></video>
+          </div>
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group" role="group">
+              <button id="btnRewind" class="btn btn-outline-secondary">« 5s</button>
+              <button id="btnPlay" class="btn btn-primary">Play</button>
+              <button id="btnPause" class="btn btn-outline-secondary">Pause</button>
+              <button id="btnStop" class="btn btn-outline-secondary">Stop</button>
+              <button id="btnForward" class="btn btn-outline-secondary">5s »</button>
+            </div>
+            <div class="ms-3">
+              <label class="form-label mb-0 me-1">Speed</label>
+              <select id="speed" class="form-select form-select-sm d-inline-block w-auto">
+                <option value="0.25">0.25x</option>
+                <option value="0.5">0.5x</option>
+                <option value="1" selected>1x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2x</option>
+                <option value="4">4x</option>
+              </select>
+            </div>
+            <div class="ms-auto small text-muted" id="timeReadout"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="clips">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">Clips</h6>
+        <button id="btnMakeClip" class="btn btn-sm btn-outline-primary">Make a clip</button>
+      </div>
+      <div id="clipForm" class="card mb-2" style="display:none;">
+        <div class="card-body p-2">
+          <div class="mb-2 small text-muted">Choose start and stop timestamps for the clip.</div>
+          <div class="row g-2 align-items-end">
+            <div class="col-12">
+              <label class="form-label mb-1">Start</label>
+              <div class="d-flex gap-2">
+                <input id="clipStart" type="datetime-local" class="form-control form-control-sm">
+                <button id="btnSetStartNow" class="btn btn-sm btn-outline-secondary" type="button">Now</button>
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label mb-1">Stop</label>
+              <div class="d-flex gap-2">
+                <input id="clipStop" type="datetime-local" class="form-control form-control-sm">
+                <button id="btnSetStopNow" class="btn btn-sm btn-outline-secondary" type="button">Now</button>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 mt-2">
+            <button id="btnCreateClip" class="btn btn-sm btn-primary" type="button">Create</button>
+            <button id="btnCancelClip" class="btn btn-sm btn-secondary" type="button">Cancel</button>
+            <div class="ms-auto small text-muted" id="clipStatus"></div>
+          </div>
+        </div>
+      </div>
+      <div id="clipsList"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Clip playback modal -->
+<div class="modal fade" id="clipPlayModal" tabindex="-1" aria-labelledby="clipPlayModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="clipPlayModalLabel">Play clip</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <video id="clipPlayVideo" class="w-100" controls preload="metadata" playsinline style="max-height:70vh;"></video>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+<script>
+(() => {
+  const camId = "{{ camera.id }}";
+  const listEl = document.getElementById('timelineList');
+  const frameImg = document.getElementById('frameImg');
+  const statusText = document.getElementById('statusText');
+  const videoEl = document.getElementById('videoEl');
+  const btnLoad = document.getElementById('btnLoad');
+  const btnExpandAll = document.getElementById('btnExpandAll');
+  const btnCollapseAll = document.getElementById('btnCollapseAll');
+  const fromEl = document.getElementById('fromTime');
+  const toEl = document.getElementById('toTime');
+  const btnPlay = document.getElementById('btnPlay');
+  const btnPause = document.getElementById('btnPause');
+  const btnStop = document.getElementById('btnStop');
+  const btnRewind = document.getElementById('btnRewind');
+  const btnForward = document.getElementById('btnForward');
+  const speedSel = document.getElementById('speed');
+  // Clips UI
+  const clipsList = document.getElementById('clipsList');
+  const btnMakeClip = document.getElementById('btnMakeClip');
+  const clipForm = document.getElementById('clipForm');
+  const clipStart = document.getElementById('clipStart');
+  const clipStop = document.getElementById('clipStop');
+  const btnSetStartNow = document.getElementById('btnSetStartNow');
+  const btnSetStopNow = document.getElementById('btnSetStopNow');
+  const btnCreateClip = document.getElementById('btnCreateClip');
+  const btnCancelClip = document.getElementById('btnCancelClip');
+  const clipStatus = document.getElementById('clipStatus');
+  // Clip play modal elements
+  const clipPlayModalEl = document.getElementById('clipPlayModal');
+  const clipPlayVideo = document.getElementById('clipPlayVideo');
+  const clipPlayModalTitle = document.getElementById('clipPlayModalLabel');
+  let clipPlayModal = null;
+  if (window.bootstrap){
+    clipPlayModal = new window.bootstrap.Modal(clipPlayModalEl);
+  }
+
+  // Deletion permissions are provided per-clip via can_delete from the API
+
+  // Default range: last 2 hours
+  const now = new Date();
+  const twoHoursAgo = new Date(now.getTime() - 2*3600*1000);
+  const toIsoLocal = (d) => {
+    const pad = (n) => String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  fromEl.value = toIsoLocal(twoHoursAgo);
+  toEl.value = toIsoLocal(now);
+
+  let minutes = []; // API minutes
+  let playlist = []; // flat entries: JPEG frames or HLS minute playlists [{url, tsMs, label, minuteKey, kind}]
+  let tree = {}; // {dayKey: { hours: {hourKey: { minutes: {minuteKey: {count, framesPresent}} } }, counts}}
+  let playState = { idx: 0, timer: null, playing: false, anchorTs: 0, anchorClock: 0 };
+  const PREFETCH = 15; // number of frames to keep preloaded
+  const cache = new Map(); // url -> Image
+  const timeReadout = document.getElementById('timeReadout');
+  let isUserScrolling = false;
+  let scrollTimer = null;
+  let lastHighlightTime = 0;
+
+  // Improve image decode without blocking rendering
+  try { frameImg.decoding = 'async'; } catch(e) {}
+  let currentUrl = '';
+  let rendering = false;
+  let renderAgain = false;
+  let lastShownIdx = -1;
+  // HLS unified playback across minutes
+  let hls = null; // hls.js instance
+  let unifiedHlsUrl = null;
+  let hlsRangeStartMs = null; // absolute wall-clock ms corresponding to video currentTime = 0
+  let hlsAny = false;
+  let clips = [];
+
+  async function loadTimeline(){
+    statusText.textContent = 'Loading timeline...';
+    listEl.innerHTML = '';
+    minutes = [];
+    try{
+      const start = new Date(fromEl.value);
+      const end = new Date(toEl.value);
+      const qs = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+      const res = await fetch(`/api/cameras/${camId}/recordings?`+qs.toString());
+      const data = await res.json();
+      minutes = (data.minutes||[]).sort((a,b)=>a.minute.localeCompare(b.minute));
+      // Determine if any HLS present and compute unified playlist URL and range start PDT
+      hlsAny = minutes.some(m => (m.kind||'') === 'hls');
+      unifiedHlsUrl = hlsAny ? (`/api/cameras/${camId}/hls_playlist?`+qs.toString()) : null;
+      if (hlsAny){
+        // Compute earliest PDT from minutes (pdtStartIso or first segment startIso)
+        let best = null;
+        for (const m of minutes){
+          if (m.kind !== 'hls') continue;
+          if (m.pdtStartIso){
+            const ms = Date.parse(m.pdtStartIso);
+            if (!isNaN(ms) && (best===null || ms < best)) best = ms;
+          } else if (Array.isArray(m.segments) && m.segments.length){
+            for (const s of m.segments){
+              if (s.startIso){
+                const ms = Date.parse(s.startIso);
+                if (!isNaN(ms) && (best===null || ms < best)) best = ms;
+                break;
+              }
+            }
+          }
+        }
+        // Fallback to window start time if PDT not available
+        hlsRangeStartMs = (best!==null) ? best : Date.parse(start.toISOString());
+      } else {
+        unifiedHlsUrl = null;
+        hlsRangeStartMs = null;
+      }
+      buildPlaylist();
+      buildTree();
+      renderTree();
+      statusText.textContent = minutes.length ? 'Select a minute to start' : 'No recordings in range';
+      // Also refresh clips after timeline load
+      await loadClips();
+    }catch(e){
+      statusText.textContent = 'Failed to load timeline';
+    }
+  }
+
+  function buildTree(){
+    tree = {};
+    // Build day/hour/minute nodes based on minutes array
+    for(const m of minutes){
+      const minuteKey = (m.minute || '').slice(0,16); // YYYY-MM-DDTHH:MM
+      const dayKey = minuteKey.slice(0,10); // YYYY-MM-DD
+      const hourKey = minuteKey.slice(0,13); // YYYY-MM-DDTHH
+      const count = Number(m.count || 0);
+      if(!tree[dayKey]) tree[dayKey] = { hours:{}, minutesCount:0, framesCount:0 };
+      if(!tree[dayKey].hours[hourKey]) tree[dayKey].hours[hourKey] = { minutes:{}, minutesCount:0, framesCount:0 };
+      tree[dayKey].hours[hourKey].minutes[minuteKey] = { count };
+      tree[dayKey].minutesCount += 1;
+      tree[dayKey].framesCount += count;
+      tree[dayKey].hours[hourKey].minutesCount += 1;
+      tree[dayKey].hours[hourKey].framesCount += count;
+    }
+  }
+
+  function renderTree(){
+    listEl.innerHTML = '';
+    const dayKeys = Object.keys(tree).sort();
+    for(const dayKey of dayKeys){
+      const dayNode = tree[dayKey];
+      const dayEl = document.createElement('details');
+      dayEl.className = 'tl-day';
+      const sum = document.createElement('summary');
+      sum.className = 'tl-summary';
+      const dayLabel = new Date(dayKey).toLocaleDateString();
+      sum.textContent = `${dayLabel} (${dayNode.minutesCount} min, ${dayNode.framesCount} frames)`;
+      dayEl.appendChild(sum);
+      const hoursWrap = document.createElement('div');
+      const hourKeys = Object.keys(dayNode.hours).sort();
+      for(const hourKey of hourKeys){
+        const hourNode = dayNode.hours[hourKey];
+        const hourEl = document.createElement('details');
+        hourEl.className = 'tl-hour';
+        const hsum = document.createElement('summary');
+        hsum.className = 'tl-summary';
+        const hDate = new Date(hourKey+':00Z');
+        hsum.textContent = `${hDate.toLocaleTimeString([], {hour:'2-digit'})} (${hourNode.minutesCount} min, ${hourNode.framesCount} frames)`;
+        hourEl.appendChild(hsum);
+        const minutesWrap = document.createElement('div');
+        const minuteKeys = Object.keys(hourNode.minutes).sort();
+        for(const minuteKey of minuteKeys){
+          const minuteNode = hourNode.minutes[minuteKey];
+          const minEl = document.createElement('details');
+          minEl.className = 'tl-minute';
+          const msum = document.createElement('summary');
+          msum.className = 'tl-summary';
+          const mDate = new Date(minuteKey+':00Z');
+          msum.textContent = `${mDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} (${minuteNode.count} frames)`;
+          minEl.appendChild(msum);
+          const items = document.createElement('div');
+          items.className = 'tl-items';
+          // Lazy render per-second entries when opened first time
+          let rendered = false;
+          minEl.addEventListener('toggle', ()=>{
+            if(minEl.open && !rendered){
+              renderMinuteItems(items, minuteKey);
+              rendered = true;
+            }
+          });
+          minEl.appendChild(items);
+          minutesWrap.appendChild(minEl);
+        }
+        hourEl.appendChild(minutesWrap);
+        hoursWrap.appendChild(hourEl);
+      }
+      dayEl.appendChild(hoursWrap);
+      listEl.appendChild(dayEl);
+    }
+  }
+
+  function renderMinuteItems(container, minuteKey){
+    // Render items depending on minute kind: JPEG (per-second) or HLS (per-second using PDT)
+    const entries = playlist.filter(f => f.minuteKey === minuteKey);
+    const isHls = entries.some(e => e.kind === 'hls' || (e.url||'').endsWith('.m3u8'));
+    if (isHls){
+      // Find the minute meta from minutes[]
+      const minuteMeta = minutes.find(m => (m.minute||'').slice(0,16) === minuteKey);
+      // Build per-second ticks within this minute from segments
+      const ticks = [];
+      if (minuteMeta && Array.isArray(minuteMeta.segments) && minuteMeta.segments.length){
+        // Determine base start time for this minute
+        let baseMs = null;
+        if (minuteMeta.pdtStartIso){
+          const v = Date.parse(minuteMeta.pdtStartIso);
+          if (!isNaN(v)) baseMs = v;
+        }
+        // If no minute PDT, use first segment PDT, else fallback to minute wall clock
+        let accum = 0;
+        for (const seg of minuteMeta.segments){
+          let segStartMs = null;
+          if (seg.startIso){
+            const v = Date.parse(seg.startIso);
+            if (!isNaN(v)) segStartMs = v;
+          }
+          if (segStartMs == null && baseMs != null){
+            segStartMs = baseMs + accum*1000;
+          }
+          const dur = Number(seg.duration || 0);
+          // Add per-second ticks inside this segment
+          if (segStartMs != null && dur > 0){
+            const secCount = Math.max(1, Math.floor(dur));
+            for (let s=0; s<secCount; s++){
+              ticks.push(segStartMs + s*1000);
+            }
+          }
+          accum += dur || 0;
+        }
+      }
+      // Fallback: at least render the minute start tick
+      if (ticks.length === 0){
+        const fr = entries[0];
+        ticks.push(fr.tsMs);
+      }
+      // Render each second tick as a clickable item
+      for (const ms of ticks){
+        const it = document.createElement('div');
+        it.className = 'tl-item';
+        const t = new Date(ms);
+        it.innerHTML = `<span>${t.toLocaleTimeString()}</span><span class="tl-badge">HLS</span>`;
+        it.addEventListener('click', ()=>{
+          // Seek unified HLS to this absolute time and auto play
+          seekToWallClock(ms);
+        });
+        it.dataset.secKey = String(Math.floor(ms/1000));
+        container.appendChild(it);
+      }
+      return;
+    }
+    // JPEG path: group by second
+    const bySecond = new Map();
+    for (const fr of entries){
+      const sKey = Math.floor(fr.tsMs/1000);
+      if(!bySecond.has(sKey)) bySecond.set(sKey, fr);
+    }
+    const seconds = Array.from(bySecond.keys()).sort((a,b)=>a-b);
+    for(const sK of seconds){
+      const fr = bySecond.get(sK);
+      const it = document.createElement('div');
+      it.className = 'tl-item';
+      const t = new Date(fr.tsMs);
+      it.innerHTML = `<span>${t.toLocaleTimeString()}</span><span class="tl-badge">${entries.length} f/min</span>`;
+      it.addEventListener('click', ()=>{
+        const idx = binarySearchTs(fr.tsMs);
+        selectIndex(idx);
+        pause();
+        showCurrentFrame();
+      });
+      it.dataset.secKey = String(sK);
+      container.appendChild(it);
+    }
+  }
+
+  function buildPlaylist(){
+    playlist = [];
+    for (const m of minutes){
+      const base = `/cameras/${camId}/recordings/${m.path}`;
+      const kind = (m.kind || 'jpeg');
+      if (kind === 'hls'){
+        const tsMs = Date.parse(m.minute);
+        const url = `${base}/index.m3u8`;
+        const minuteKey = (m.minute || '').slice(0,16);
+        playlist.push({ url, tsMs, label: 'index.m3u8', minuteKey, kind: 'hls' });
+      } else {
+        const hasFrames = Array.isArray(m.frames) && m.frames.length>0;
+        const src = hasFrames ? m.frames : (m.files||[]).map(fn=>({name:fn, ts: m.minute}));
+        for (const fr of src){
+          const tsMs = Date.parse(fr.ts || m.minute);
+          const url = `${base}/${fr.name}`;
+          const minuteKey = (m.minute || '').slice(0,16);
+          playlist.push({ url, tsMs, label: fr.name, minuteKey, kind: 'jpeg' });
+        }
+      }
+    }
+    playlist.sort((a,b)=>a.tsMs-b.tsMs);
+  }
+
+  // HLS.js integration (loaded later via CDN)
+
+  function ensureVideoVisible(){
+    frameImg.style.display = 'none';
+    videoEl.style.display = '';
+  }
+
+  function ensureImageVisible(){
+    videoEl.pause();
+    videoEl.style.display = 'none';
+    frameImg.style.display = '';
+  }
+
+  async function showCurrentFrame(){
+    // Prevent overlapping swaps which can cause flicker
+    if (rendering) { renderAgain = true; return; }
+    rendering = true;
+    const f = playlist[playState.idx];
+    if(!f){ statusText.textContent = 'No frame'; rendering = false; return; }
+    // If URL hasn't changed, just update status and return
+    const dt = new Date(f.tsMs);
+    statusText.textContent = `${dt.toLocaleString()} (${playState.idx+1}/${playlist.length})`;
+    timeReadout.textContent = dt.toLocaleTimeString();
+    highlightActiveInTimeline(dt);
+
+    if (f.kind === 'hls' || f.url.endsWith('.m3u8')){
+      ensureVideoVisible();
+      const srcUrl = unifiedHlsUrl || f.url;
+      if (currentUrl !== srcUrl){
+        currentUrl = srcUrl;
+        // Attach HLS
+        if (videoEl.canPlayType('application/vnd.apple.mpegurl')){
+          videoEl.src = srcUrl;
+          videoEl.play().catch(()=>{});
+        } else {
+          if (!window.Hls){ /* hls.js not yet loaded */ }
+          if (window.Hls){
+            if (hls){ try { hls.destroy(); } catch(_){} }
+            hls = new window.Hls({
+              lowLatencyMode: false,
+              maxBufferLength: 10,
+              maxMaxBufferLength: 30,
+              backBufferLength: 15,
+              liveSyncDurationCount: 3
+            });
+            hls.loadSource(srcUrl);
+            hls.attachMedia(videoEl);
+            hls.on(window.Hls.Events.MANIFEST_PARSED, function(){
+              videoEl.play().catch(()=>{});
+            });
+          } else {
+            // Fallback: try setting src anyway
+            videoEl.src = srcUrl;
+            videoEl.play().catch(()=>{});
+          }
+        }
+      }
+      // For HLS we don't prefetch
+    } else {
+      ensureImageVisible();
+      if (currentUrl !== f.url){
+        const pre = getOrPrefetch(f.url);
+        try {
+          if (pre && typeof pre.decode === 'function'){
+            await pre.decode();
+          }
+        } catch(e) {}
+        frameImg.src = pre ? pre.src : f.url;
+        currentUrl = f.url;
+      }
+      prefetchAhead(playState.idx);
+    }
+    lastShownIdx = playState.idx;
+    rendering = false;
+    if (renderAgain) { renderAgain = false; showCurrentFrame(); }
+  }
+
+  function step(n){
+    let next = playState.idx + n;
+    next = Math.max(0, Math.min(playlist.length-1, next));
+    playState.idx = next;
+    showCurrentFrame();
+  }
+
+  function binarySearchTs(targetMs){
+    let lo = 0, hi = playlist.length-1;
+    while (lo <= hi){
+      const mid = (lo + hi) >> 1;
+      const v = playlist[mid].tsMs;
+      if (v < targetMs) lo = mid + 1;
+      else if (v > targetMs) hi = mid - 1;
+      else return mid;
+    }
+    // lo is first greater, pick nearest between lo and lo-1
+    const cand = [];
+    if (lo < playlist.length) cand.push({i:lo, d:Math.abs(playlist[lo].tsMs-targetMs)});
+    if (lo-1 >= 0) cand.push({i:lo-1, d:Math.abs(playlist[lo-1].tsMs-targetMs)});
+    cand.sort((a,b)=>a.d-b.d);
+    return cand.length?cand[0].i:0;
+  }
+
+  function selectIndex(idx){
+    playState.idx = Math.max(0, Math.min(playlist.length-1, idx));
+  }
+
+  function jumpBySeconds(delta){
+    const cur = playlist[playState.idx];
+    if(!cur) return;
+    const wasPlaying = playState.playing;
+    if (cur.kind === 'hls' || cur.url.endsWith('.m3u8')){
+      ensureVideoVisible();
+      try {
+        const sp = parseFloat(speedSel.value || '1');
+        videoEl.playbackRate = sp;
+      } catch(e) {}
+      try {
+        videoEl.currentTime = Math.max(0, (videoEl.currentTime || 0) + delta);
+        videoEl.play().catch(()=>{});
+      } catch(e) {}
+      playState.playing = true;
+      return;
+    }
+    // JPEG path: compute current media time precisely if already playing
+    const speed = parseFloat(speedSel.value || '1');
+    const nowClock = performance.now();
+    const currentMediaMs = wasPlaying ? (playState.anchorTs + (nowClock - playState.anchorClock) * speed) : cur.tsMs;
+    const target = currentMediaMs + delta*1000;
+    const idx = binarySearchTs(target);
+    selectIndex(idx);
+    // Re-anchor playback timeline to the chosen frame and ensure playback continues
+    playState.anchorTs = playlist[idx].tsMs;
+    playState.anchorClock = performance.now();
+    lastShownIdx = -1; // force render
+    showCurrentFrame();
+    // Auto-start/continue playback per requirement
+    play();
+  }
+
+  function getOrPrefetch(url){
+    let img = cache.get(url);
+    if(!img){
+      img = new Image();
+      try { img.decoding = 'async'; } catch(e) {}
+      img.src = url; // unique URL per file, safe to cache without busting
+      cache.set(url, img);
+    }
+    return img;
+  }
+
+  function prefetchAhead(idx){
+    for (let i=1; i<=PREFETCH; i++){
+      const f = playlist[idx+i];
+      if(!f) break;
+      getOrPrefetch(f.url);
+    }
+  }
+
+  function highlightActiveInTimeline(dt){
+    const now = performance.now();
+    if (now - lastHighlightTime < 100) return; // throttle to ~10fps
+    lastHighlightTime = now;
+    const secKey = Math.floor(dt.getTime()/1000).toString();
+    const items = listEl.querySelectorAll('.tl-item');
+    items.forEach(el=>{
+      if (el.dataset.secKey === secKey) el.classList.add('active');
+      else el.classList.remove('active');
+    });
+    if (isUserScrolling) return; // don't fight the user's scroll
+    const active = listEl.querySelector('.tl-item.active');
+    if (active){
+      // Only scroll if active is far out of view to reduce layout work
+      const container = listEl;
+      const rect = active.getBoundingClientRect();
+      const crect = container.getBoundingClientRect();
+      const margin = 40;
+      if (rect.top < crect.top + margin || rect.bottom > crect.bottom - margin){
+        active.scrollIntoView({behavior:'smooth', block:'center'});
+      }
+    }
+  }
+
+  function play(){
+    if(playState.playing) return;
+    playState.playing = true;
+    // Align timing to current frame timestamp
+    const cur = playlist[playState.idx];
+    if(!cur){ statusText.textContent = 'No frame'; return; }
+    if (cur.kind === 'hls' || cur.url.endsWith('.m3u8')){
+      ensureVideoVisible();
+      videoEl.play().catch(()=>{});
+      // Speed
+      const sp = parseFloat(speedSel.value || '1');
+      try { videoEl.playbackRate = sp; } catch(e) {}
+      // No rAF loop needed for HLS
+      return;
+    }
+    playState.anchorTs = cur.tsMs;
+    playState.anchorClock = performance.now();
+    const loop = () => {
+      if(!playState.playing) return;
+      const speed = parseFloat(speedSel.value || '1');
+      const nowClock = performance.now();
+      const elapsed = (nowClock - playState.anchorClock) * speed; // ms in media time
+      const targetTs = playState.anchorTs + elapsed;
+      // Advance index while next frame ts <= targetTs
+      while (playState.idx < playlist.length-1 && playlist[playState.idx+1].tsMs <= targetTs){
+        playState.idx++;
+      }
+      // Only render when index actually advances to reduce main-thread work
+      if (playState.idx !== lastShownIdx) {
+        showCurrentFrame();
+      }
+      if (playState.idx >= playlist.length-1){ stop(); return; }
+      playState.timer = requestAnimationFrame(loop);
+    };
+    showCurrentFrame();
+    playState.timer = requestAnimationFrame(loop);
+  }
+
+  function pause(){
+    playState.playing = false;
+    if(playState.timer){ cancelAnimationFrame(playState.timer); playState.timer = null; }
+    try { videoEl.pause(); } catch(e) {}
+  }
+
+  function stop(){
+    pause();
+    playState.idx = 0;
+    showCurrentFrame();
+  }
+
+  btnLoad.addEventListener('click', loadTimeline);
+  btnPlay.addEventListener('click', play);
+  btnPause.addEventListener('click', pause);
+  btnStop.addEventListener('click', stop);
+  btnRewind.addEventListener('click', ()=> jumpBySeconds(-5));
+  btnForward.addEventListener('click', ()=> jumpBySeconds(5));
+  speedSel.addEventListener('change', ()=>{
+    try { videoEl.playbackRate = parseFloat(speedSel.value||'1'); } catch(e) {}
+  });
+  btnExpandAll.addEventListener('click', ()=>{
+    listEl.querySelectorAll('details').forEach(d=> d.open = true);
+  });
+  btnCollapseAll.addEventListener('click', ()=>{
+    listEl.querySelectorAll('details').forEach(d=> d.open = false);
+  });
+
+  // Track user scrolling to avoid interfering with playback
+  listEl.addEventListener('scroll', ()=>{
+    isUserScrolling = true;
+    if (scrollTimer) clearTimeout(scrollTimer);
+    scrollTimer = setTimeout(()=>{ isUserScrolling = false; }, 200);
+  }, { passive: true });
+
+  function seekToWallClock(targetMs){
+    if (!hlsAny || !unifiedHlsUrl){
+      // fallback: select nearest JPEG/HLS minute frame
+      const idx = binarySearchTs(targetMs);
+      selectIndex(idx);
+      showCurrentFrame();
+      play();
+      return;
+    }
+    // Ensure unified playlist is loaded
+    ensureVideoVisible();
+    const srcUrl = unifiedHlsUrl;
+    if (currentUrl !== srcUrl){
+      // Set up source first, then seek once metadata is loaded
+      const doSeek = ()=>{
+        const base = hlsRangeStartMs || Date.parse(fromEl.value);
+        const off = Math.max(0, (targetMs - base)/1000);
+        try { videoEl.currentTime = off; } catch(e) {}
+        const sp = parseFloat(speedSel.value || '1');
+        try { videoEl.playbackRate = sp; } catch(e) {}
+        videoEl.play().catch(()=>{});
+      };
+      if (videoEl.canPlayType('application/vnd.apple.mpegurl')){
+        currentUrl = srcUrl;
+        videoEl.src = srcUrl;
+        videoEl.onloadedmetadata = ()=>{ doSeek(); videoEl.onloadedmetadata = null; };
+      } else if (window.Hls){
+        if (hls){ try { hls.destroy(); } catch(_){} }
+        hls = new window.Hls({lowLatencyMode:false});
+        hls.loadSource(srcUrl);
+        hls.attachMedia(videoEl);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, function(){ doSeek(); });
+        currentUrl = srcUrl;
+      } else {
+        // Basic fallback
+        currentUrl = srcUrl;
+        videoEl.src = srcUrl;
+        videoEl.onloadedmetadata = ()=>{ doSeek(); videoEl.onloadedmetadata = null; };
+      }
+    } else {
+      const base = hlsRangeStartMs || Date.parse(fromEl.value);
+      const off = Math.max(0, (targetMs - base)/1000);
+      try { videoEl.currentTime = off; } catch(e) {}
+      const sp = parseFloat(speedSel.value || '1');
+      try { videoEl.playbackRate = sp; } catch(e) {}
+      videoEl.play().catch(()=>{});
+    }
+    playState.playing = true;
+  }
+
+  // While HLS video plays, update timeline highlight and readout by currentTime
+  videoEl.addEventListener('timeupdate', ()=>{
+    if (!hlsAny || hlsRangeStartMs == null || videoEl.paused) return;
+    const dt = new Date(hlsRangeStartMs + (videoEl.currentTime||0)*1000);
+    timeReadout.textContent = dt.toLocaleTimeString();
+    highlightActiveInTimeline(dt);
+  });
+
+  // --------------------
+  // Clips: helpers
+  // --------------------
+  function toIsoLocalInput(d){
+    const pad = (n)=> String(n).padStart(2,'0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  }
+
+  function currentWallClockDate(){
+    // Determine current playback wall-clock time
+    const cur = playlist[playState.idx];
+    if (!cur) return new Date();
+    if (cur.kind === 'hls' || cur.url.endsWith('.m3u8')){
+      if (hlsRangeStartMs != null){
+        const ms = hlsRangeStartMs + (videoEl.currentTime||0)*1000;
+        return new Date(ms);
+      }
+      return new Date(cur.tsMs);
+    }
+    // JPEG path
+    return new Date(cur.tsMs);
+  }
+
+  async function loadClips(){
+    try{
+      const res = await fetch(`/api/cameras/${camId}/clips?limit=100`);
+      const data = await res.json();
+      clips = data.clips || [];
+      renderClips();
+    }catch(e){
+      clipsList.innerHTML = '<div class="text-muted small">Failed to load clips.</div>';
+    }
+  }
+
+  function renderClips(){
+    clipsList.innerHTML = '';
+    if (!clips.length){
+      clipsList.innerHTML = '<div class="text-muted small">No clips yet.</div>';
+      return;
+    }
+    for (const c of clips){
+      const div = document.createElement('div');
+      div.className = 'clip-item';
+      const st = new Date(c.start_iso||c.startIso||0);
+      const en = new Date(c.end_iso||c.endIso||0);
+      const dur = Math.max(0, Math.round((c.duration_s||0)));
+      const sizeStr = c.size_bytes?` · ${(c.size_bytes/1024/1024).toFixed(1)} MB`:'';
+      const canDelete = !!(c.can_delete === true);
+      const actions = `
+        <button class="btn btn-sm btn-success me-1 clip-play" title="Play" data-id="${c.id||c._id}" ${c.stream_url?`data-url="${c.stream_url}"`:''} ${c.name?`data-name="${String(c.name).replace(/"/g,'&quot;')}"`:''}>▶</button>
+        <div class="dropdown">
+          <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="dropdown" aria-expanded="false" aria-label="Clip actions">⋮</button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            ${c.download_url?`<li><a class="dropdown-item" href="${c.download_url}" download>Download</a></li>`:''}
+            ${canDelete ? `<li><button class="dropdown-item text-danger clip-delete" data-id="${c.id||c._id}">Delete</button></li>` : ''}
+          </ul>
+        </div>`;
+      const displayName = (c.name && String(c.name).trim().length) ? String(c.name).trim() : `${st.toLocaleTimeString()}–${en.toLocaleTimeString()}`;
+      const cid = String(c.id||c._id||'');
+      div.innerHTML = `<div>
+          <div class="clip-name" data-id="${cid}" title="Double click to rename"><strong>${displayName}</strong></div>
+          <small>${st.toLocaleDateString()} · ${dur}s${sizeStr}</small>
+        </div>
+        <div class="clip-actions">${actions}</div>`;
+      clipsList.appendChild(div);
+    }
+  }
+
+  async function createClip(startDate, endDate){
+    clipStatus.textContent = 'Creating...';
+    try{
+      const body = { start: new Date(startDate).toISOString(), end: new Date(endDate).toISOString() };
+      const res = await fetch(`/api/cameras/${camId}/clips`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      if (!res.ok){
+        const err = await res.json().catch(()=>({error:'failed'}));
+        throw new Error(err.error || 'Failed to create clip');
+      }
+      const clip = await res.json();
+      clips.unshift(clip);
+      renderClips();
+      clipStatus.textContent = 'Clip saved';
+      setTimeout(()=>{ clipStatus.textContent=''; clipForm.style.display='none'; }, 1000);
+    }catch(e){
+      clipStatus.textContent = 'Error: ' + (e.message || e);
+    }
+  }
+
+  // Make a clip workflow
+  btnMakeClip.addEventListener('click', ()=>{
+    const nowDate = currentWallClockDate();
+    const startD = new Date(nowDate.getTime() - 5*1000);
+    clipStart.value = toIsoLocalInput(startD);
+    clipStop.value = toIsoLocalInput(nowDate);
+    clipForm.style.display = '';
+  });
+  btnCancelClip.addEventListener('click', ()=>{ clipForm.style.display='none'; clipStatus.textContent=''; });
+  btnSetStartNow.addEventListener('click', ()=>{ clipStart.value = toIsoLocalInput(currentWallClockDate()); });
+  btnSetStopNow.addEventListener('click', ()=>{ clipStop.value = toIsoLocalInput(currentWallClockDate()); });
+  btnCreateClip.addEventListener('click', ()=>{
+    if (!clipStart.value || !clipStop.value){ clipStatus.textContent = 'Start and Stop are required'; return; }
+    const s = new Date(clipStart.value);
+    const e = new Date(clipStop.value);
+    if (e <= s){ clipStatus.textContent = 'Stop must be after Start'; return; }
+    createClip(s, e);
+  });
+
+  // Delete clip handler (event delegation)
+  clipsList.addEventListener('click', async (ev)=>{
+    // Delete action
+    const delBtn = ev.target.closest('.clip-delete');
+    if (delBtn){
+      const id = delBtn.getAttribute('data-id');
+      if (!id) return;
+      if (!confirm('Delete this clip? This cannot be undone.')) return;
+      try {
+        const res = await fetch(`/api/cameras/${camId}/clips/${id}`, { method: 'DELETE' });
+        if (!res.ok){
+          const err = await res.json().catch(()=>({error:'Failed'}));
+          throw new Error(err.error || 'Failed to delete');
+        }
+        // remove from local list and re-render
+        clips = clips.filter(x => (String(x.id||x._id) !== String(id)));
+        renderClips();
+      } catch(e){
+        alert('Error: ' + (e.message || e));
+      }
+      return;
+    }
+    // Play action
+    const playBtn = ev.target.closest('.clip-play');
+    if (playBtn){
+      const url = playBtn.getAttribute('data-url');
+      if (!url){
+        alert('Clip URL missing');
+        return;
+      }
+      const name = playBtn.getAttribute('data-name');
+      if (clipPlayModalTitle) clipPlayModalTitle.textContent = name && name.trim().length ? name : 'Play clip';
+      // Set source and show modal
+      clipPlayVideo.src = url;
+      try { clipPlayVideo.play(); } catch(e) {}
+      if (clipPlayModal){ clipPlayModal.show(); }
+      else {
+        try { new bootstrap.Modal(clipPlayModalEl).show(); } catch(e) {}
+      }
+      return;
+    }
+  });
+
+  // Inline rename on double click
+  clipsList.addEventListener('dblclick', (ev)=>{
+    const nameEl = ev.target.closest('.clip-name');
+    if (!nameEl) return;
+    const id = nameEl.getAttribute('data-id');
+    const strong = nameEl.querySelector('strong');
+    const oldText = strong ? strong.textContent : nameEl.textContent;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-control form-control-sm';
+    input.value = oldText || '';
+    nameEl.innerHTML = '';
+    nameEl.appendChild(input);
+    input.focus();
+    input.select();
+    const finish = async (commit) => {
+      const newVal = input.value.trim();
+      if (!commit){ nameEl.innerHTML = `<strong>${oldText}</strong>`; return; }
+      try{
+        const res = await fetch(`/api/cameras/${camId}/clips/${id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newVal })
+        });
+        if (!res.ok){
+          const err = await res.json().catch(()=>({error:'Failed'}));
+          throw new Error(err.error || 'Failed to rename');
+        }
+        // Update local array
+        const updated = await res.json();
+        clips = clips.map(cl => (String(cl.id||cl._id)===String(id)? {...cl, name: updated.name}: cl));
+        nameEl.innerHTML = `<strong>${(updated.name && String(updated.name).trim()) ? updated.name : oldText}</strong>`;
+      }catch(e){
+        alert('Rename failed: ' + (e.message || e));
+        nameEl.innerHTML = `<strong>${oldText}</strong>`;
+      }
+    };
+    input.addEventListener('keydown', (e)=>{
+      if (e.key === 'Enter'){ finish(true); }
+      else if (e.key === 'Escape'){ finish(false); }
+    });
+    input.addEventListener('blur', ()=> finish(true));
+  });
+
+  // Initial load
+  loadTimeline();
+  loadClips();
+
+  // Cleanup video on modal hide
+  clipPlayModalEl.addEventListener('hidden.bs.modal', ()=>{
+    try { clipPlayVideo.pause(); } catch(e) {}
+    clipPlayVideo.removeAttribute('src');
+    clipPlayVideo.load();
+  });
+})();
+</script>
+
+<!-- hls.js for HLS playback (non-Safari browsers) -->
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.14/dist/hls.min.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

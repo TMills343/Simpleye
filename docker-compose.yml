@@ -20,8 +20,12 @@ services:
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
       MONGO_DB: ${MONGO_DB:-simpleye}
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY:-zxc132vzxc56a4sdf6asf8948qwe}
+      RECORDINGS_DIR: ${RECORDINGS_DIR:-/data/recordings}
     ports:
       - "8000:8000"
+    volumes:
+      - recordings_data:/data/recordings
 
 volumes:
   mongo_data:
+  recordings_data:
