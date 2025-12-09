@@ -970,7 +970,12 @@
     input.select();
     const finish = async (commit) => {
       const newVal = input.value.trim();
-      if (!commit){ nameEl.innerHTML = `<strong>${oldText}</strong>`; return; }
+      // If user cleared the text and clicked away, do NOT commit an empty name.
+      // Restore the previous display so the row remains clickable for future edits.
+      if (!commit || newVal.length === 0){
+        nameEl.innerHTML = `<strong>${oldText}</strong>`;
+        return;
+      }
       try{
         const res = await fetch(`/api/cameras/${camId}/clips/${id}`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
