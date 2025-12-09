@@ -16,6 +16,36 @@ Features
 Requirements
 - Docker and Docker Compose
 
+Important: persist your recordings (volume mapping required)
+- Containers are ephemeral. If you don’t map the recordings directory to persistent storage on the host, you will lose footage when the container is recreated (e.g., during updates with Watchtower/Portainer) or when it is removed.
+- The application writes all footage under RECORDINGS_DIR inside the container at `/data/recordings`. You must mount this path to a host directory or a named volume.
+
+What the included docker-compose already does for you (seamless by default)
+- The provided `docker-compose.yml` maps a named volume `recordings_data` to `/data/recordings`. This means recordings persist automatically across restarts/updates with no user action required.
+- It also sets `stop_grace_period: 60s` on the web service so recorders can flush/close cleanly during updates.
+- If you prefer a specific host path instead of a named volume, replace the volume mapping with a bind mount like `/data/simpleye/recordings:/data/recordings:rw` (an example is commented in the compose file).
+
+Examples
+- Docker Compose (bind mount on the host; recommended on Linux/Ubuntu):
+  - In your service:
+    - `volumes:`
+      - `/data/simpleye/recordings:/data/recordings:rw`
+  - Also consider adding a graceful shutdown timeout so HLS/JPEG writers can flush:
+    - `stop_grace_period: 60s`
+
+- docker run (bind mount):
+  - `docker run -d -p 8000:8000 \
+     -v /data/simpleye/recordings:/data/recordings:rw \
+     -e MONGO_URI=... -e MONGO_DB=simpleye -e FLASK_SECRET_KEY=change-me \
+     yourrepo/simpleye:TAG`
+
+- Portainer (Standalone container):
+  - Containers → your app → Duplicate/Edit → Volumes → map Host path `/data/simpleye/recordings` to Container path `/data/recordings` (RW). Set Stop timeout to 60s in Advanced settings.
+
+Notes
+- On Ubuntu, create the host folder once: `sudo mkdir -p /data/simpleye/recordings && sudo chmod 775 /data/simpleye/recordings` (adjust ownership/permissions if needed).
+- Named volume alternative (Compose): `volumes: [ simpleye_recordings:/data/recordings ]` and declare `simpleye_recordings:` under the top-level `volumes:` section.
+
 Quick start (Docker Compose)
 There are two ways to run the app, depending on whether you have an external MongoDB or want a local MongoDB container.
 
