@@ -15,6 +15,8 @@ services:
   web:
     build: .
     restart: unless-stopped
+    # Give the app time to flush HLS/JPEG writers on stop/update
+    stop_grace_period: 60s
     environment:
       # default to internal docker network hostname
       MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017}
@@ -24,7 +26,10 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      # Default: use a named volume so data persists seamlessly across updates
       - recordings_data:/data/recordings
+      # Alternatively, bind to a specific host path (uncomment and edit as needed):
+      # - /data/simpleye/recordings:/data/recordings:rw
 
 volumes:
   mongo_data:

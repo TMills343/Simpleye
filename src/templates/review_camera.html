@@ -230,14 +230,14 @@
 
   // Deletion permissions are provided per-clip via can_delete from the API
 
-  // Default range: last 2 hours
+  // Default range: last 24 hours
   const now = new Date();
-  const twoHoursAgo = new Date(now.getTime() - 2*3600*1000);
+  const twentyFourHoursAgo = new Date(now.getTime() - 24*3600*1000);
   const toIsoLocal = (d) => {
     const pad = (n) => String(n).padStart(2,'0');
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
-  fromEl.value = toIsoLocal(twoHoursAgo);
+  fromEl.value = toIsoLocal(twentyFourHoursAgo);
   toEl.value = toIsoLocal(now);
 
   let minutes = []; // API minutes

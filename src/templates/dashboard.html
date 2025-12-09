@@ -82,10 +82,16 @@
             <div>
               <button
                 type="button"
-                class="btn btn-sm btn-outline-light open-modal"
+                class="btn btn-sm btn-outline-dark open-modal"
                 data-cam-id="{{ cam.id }}"
                 data-cam-name="{{ cam.name }}"
               >Open</button>
+              <a
+                href="/cameras/{{ cam.id }}/review"
+                class="btn btn-sm btn-outline-primary ms-2"
+                title="Go to review for {{ cam.name }}"
+                aria-label="Review {{ cam.name }}"
+              >Review</a>
             </div>
           </div>
           <div class="grid-card-body">
