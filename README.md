@@ -16,14 +16,22 @@ Features
 Requirements
 - Docker and Docker Compose
 
-Important: persist your recordings (volume mapping required)
+Important: persist your recordings (manual volume mapping required)
 - Containers are ephemeral. If you don’t map the recordings directory to persistent storage on the host, you will lose footage when the container is recreated (e.g., during updates with Watchtower/Portainer) or when it is removed.
-- The application writes all footage under RECORDINGS_DIR inside the container at `/data/recordings`. You must mount this path to a host directory or a named volume.
+- The application writes all footage under RECORDINGS_DIR inside the container at `/data/recordings`. You must manually mount this path to a host directory or to a named volume in your deployment. The provided docker-compose does NOT include this mapping by default — you must add it yourself.
 
-What the included docker-compose already does for you (seamless by default)
-- The provided `docker-compose.yml` maps a named volume `recordings_data` to `/data/recordings`. This means recordings persist automatically across restarts/updates with no user action required.
-- It also sets `stop_grace_period: 60s` on the web service so recorders can flush/close cleanly during updates.
-- If you prefer a specific host path instead of a named volume, replace the volume mapping with a bind mount like `/data/simpleye/recordings:/data/recordings:rw` (an example is commented in the compose file).
+How to add the required mapping
+- Option A: Bind mount (recommended on Linux/Ubuntu)
+  - In your service definition add:
+    - `volumes:`
+      - `/data/simpleye/recordings:/data/recordings:rw`
+  - Also consider adding a graceful shutdown timeout so HLS/JPEG writers can flush:
+    - `stop_grace_period: 60s`
+- Option B: Docker named volume
+  - Create or reference a named volume and map it to `/data/recordings`:
+    - Service: `volumes: [ recordings_data:/data/recordings ]`
+    - Compose root: `volumes: { recordings_data: {} }`
+  - Note: you still must add this mapping to your compose or Portainer stack; it is not present by default.
 
 Examples
 - Docker Compose (bind mount on the host; recommended on Linux/Ubuntu):
@@ -44,22 +52,24 @@ Examples
 
 Notes
 - On Ubuntu, create the host folder once: `sudo mkdir -p /data/simpleye/recordings && sudo chmod 775 /data/simpleye/recordings` (adjust ownership/permissions if needed).
-- Named volume alternative (Compose): `volumes: [ simpleye_recordings:/data/recordings ]` and declare `simpleye_recordings:` under the top-level `volumes:` section.
+- Named volume alternative (Compose): `volumes: [ simpleye_recordings:/data/recordings ]` and declare `simpleye_recordings:` under the top-level `volumes:` section. Remember to add this mapping yourself; it is not included by default.
 
 Quick start (Docker Compose)
 There are two ways to run the app, depending on whether you have an external MongoDB or want a local MongoDB container.
 
 Option A — Use an external MongoDB (recommended for deployments)
 1. Create a .env file at the repository root and set MONGO_URI to your external MongoDB connection string (and MONGO_DB if needed).
-2. Start only the web app service:
+2. Ensure you have added a volume mapping for recordings in your deployment (see "Important" section above).
+3. Start only the web app service:
    - `docker compose up --build`
-3. Open the app at: http://localhost:8000
+4. Open the app at: http://localhost:8000
 
 Option B — Run a local MongoDB with Compose (for local development)
 1. Create a .env file (you can keep the default MONGO_URI)
-2. Start the stack including the local MongoDB service via the compose profile:
+2. Ensure you have added a volume mapping for recordings in your compose file (see examples above).
+3. Start the stack including the local MongoDB service via the compose profile:
    - `docker compose --profile local-db up --build`
-3. Open the app at: http://localhost:8000
+4. Open the app at: http://localhost:8000
 
 First-time setup (users)
 - On first boot when the database has no users, you will be redirected to a Signup page to create the initial admin account (username + password; email optional for future 2FA/reset).
@@ -81,7 +91,7 @@ Recording and review
    - Recording Mode defaults to HLS (recommended). You can change to JPEG if needed.
    - Optional per-camera settings: Retention (hours), HLS Bitrate (kbps), HLS Segment length (seconds), FPS cap/JPEG quality (JPEG mode).
 2) Storage & retention
-   - Container writes to RECORDINGS_DIR, mounted by docker-compose at /data/recordings.
+   - Container writes to RECORDINGS_DIR. You must mount this to persistent storage at `/data/recordings` (e.g., host bind or named volume) to retain footage across restarts/updates.
    - Layout per camera: /data/recordings/<camera_id>/YYYY/MM/DD/HH/MM/
      - HLS minutes: index.m3u8 + seg_*.ts
      - JPEG minutes: SS_ms.jpg files
@@ -137,7 +147,12 @@ Notes
 - The “Check” action only tests TCP connectivity to the configured HTTP port (default 80). It does not authenticate to or stream from the camera.
 - Live view translates RTSP video into an MJPEG stream using OpenCV + FFmpeg in the backend. For most cameras, provide a full RTSP URL (e.g., rtsp://user:pass@192.168.1.10:554/stream). Network/firewall rules must allow the app container to reach the camera on its RTSP ports.
 - Recording uses FFmpeg for HLS (default) or OpenCV for JPEG frames. Ensure ffmpeg is available (installed in the Docker image by default).
-- Storage and retention: recordings live under RECORDINGS_DIR (mounted by docker-compose at /data/recordings). Retention cleanup runs every 5 minutes.
+- Storage and retention: recordings live under RECORDINGS_DIR (you must mount it at /data/recordings). Retention cleanup runs every 5 minutes.
+
+Validation checklist (persistence)
+- [ ] Portainer or Compose shows a volume mapping to `/data/recordings` for the web container
+- [ ] Files appear on the host or in the named volume as you record
+- [ ] Restart/update does not delete your files
 - Permissions: only admins can create/edit cameras; clip deletion is allowed to the clip’s creator or admins. Viewers can create clips but cannot delete others’ clips.
 
 Static assets structure

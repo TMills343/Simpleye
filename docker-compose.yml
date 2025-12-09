@@ -26,10 +26,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Default: use a named volume so data persists seamlessly across updates
       - recordings_data:/data/recordings
-      # Alternatively, bind to a specific host path (uncomment and edit as needed):
-      # - /data/simpleye/recordings:/data/recordings:rw
 
 volumes:
   mongo_data:
