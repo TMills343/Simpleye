@@ -264,6 +264,22 @@
   let hlsAny = false;
   let clips = [];
 
+  // ---- Time helpers: ensure LOCAL day/hour/minute grouping ----
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function localKeysFromIso(iso){
+    // iso is minute ISO from API (UTC, with Z). We group by LOCAL time boundaries.
+    const d = new Date(iso);
+    const y = d.getFullYear();
+    const m = pad2(d.getMonth()+1);
+    const day = pad2(d.getDate());
+    const h = pad2(d.getHours());
+    const min = pad2(d.getMinutes());
+    const dayKey = `${y}-${m}-${day}`;               // local day
+    const hourKey = `${y}-${m}-${day}T${h}`;         // local hour
+    const minuteKey = `${y}-${m}-${day}T${h}:${min}`;// local minute
+    return { dayKey, hourKey, minuteKey };
+  }
+
   async function loadTimeline(){
     statusText.textContent = 'Loading timeline...';
     listEl.innerHTML = '';
@@ -317,9 +333,10 @@
     tree = {};
     // Build day/hour/minute nodes based on minutes array
     for(const m of minutes){
-      const minuteKey = (m.minute || '').slice(0,16); // YYYY-MM-DDTHH:MM
-      const dayKey = minuteKey.slice(0,10); // YYYY-MM-DD
-      const hourKey = minuteKey.slice(0,13); // YYYY-MM-DDTHH
+      const keys = localKeysFromIso(m.minute || '');
+      const minuteKey = keys.minuteKey;
+      const dayKey = keys.dayKey;
+      const hourKey = keys.hourKey;
       const count = Number(m.count || 0);
       if(!tree[dayKey]) tree[dayKey] = { hours:{}, minutesCount:0, framesCount:0 };
       if(!tree[dayKey].hours[hourKey]) tree[dayKey].hours[hourKey] = { minutes:{}, minutesCount:0, framesCount:0 };
@@ -340,7 +357,8 @@
       dayEl.className = 'tl-day';
       const sum = document.createElement('summary');
       sum.className = 'tl-summary';
-      const dayLabel = new Date(dayKey).toLocaleDateString();
+      // Force local midnight by adding local time suffix (no Z)
+      const dayLabel = new Date(dayKey + 'T00:00').toLocaleDateString();
       sum.textContent = `${dayLabel} (${dayNode.minutesCount} min, ${dayNode.framesCount} frames)`;
       dayEl.appendChild(sum);
       const hoursWrap = document.createElement('div');
@@ -351,7 +369,8 @@
         hourEl.className = 'tl-hour';
         const hsum = document.createElement('summary');
         hsum.className = 'tl-summary';
-        const hDate = new Date(hourKey+':00Z');
+        // Interpret as local time (no Z)
+        const hDate = new Date(hourKey+':00');
         hsum.textContent = `${hDate.toLocaleTimeString([], {hour:'2-digit'})} (${hourNode.minutesCount} min, ${hourNode.framesCount} frames)`;
         hourEl.appendChild(hsum);
         const minutesWrap = document.createElement('div');
@@ -362,7 +381,8 @@
           minEl.className = 'tl-minute';
           const msum = document.createElement('summary');
           msum.className = 'tl-summary';
-          const mDate = new Date(minuteKey+':00Z');
+          // Interpret as local time (no Z)
+          const mDate = new Date(minuteKey+':00');
           msum.textContent = `${mDate.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} (${minuteNode.count} frames)`;
           minEl.appendChild(msum);
           const items = document.createElement('div');
@@ -392,7 +412,7 @@
     const isHls = entries.some(e => e.kind === 'hls' || (e.url||'').endsWith('.m3u8'));
     if (isHls){
       // Find the minute meta from minutes[]
-      const minuteMeta = minutes.find(m => (m.minute||'').slice(0,16) === minuteKey);
+      const minuteMeta = minutes.find(m => localKeysFromIso(m.minute||'').minuteKey === minuteKey);
       // Build per-second ticks within this minute from segments
       const ticks = [];
       if (minuteMeta && Array.isArray(minuteMeta.segments) && minuteMeta.segments.length){
@@ -476,7 +496,7 @@
       if (kind === 'hls'){
         const tsMs = Date.parse(m.minute);
         const url = `${base}/index.m3u8`;
-        const minuteKey = (m.minute || '').slice(0,16);
+        const minuteKey = localKeysFromIso(m.minute || '').minuteKey;
         playlist.push({ url, tsMs, label: 'index.m3u8', minuteKey, kind: 'hls' });
       } else {
         const hasFrames = Array.isArray(m.frames) && m.frames.length>0;
@@ -484,7 +504,7 @@
         for (const fr of src){
           const tsMs = Date.parse(fr.ts || m.minute);
           const url = `${base}/${fr.name}`;
-          const minuteKey = (m.minute || '').slice(0,16);
+          const minuteKey = localKeysFromIso(fr.ts || m.minute || '').minuteKey;
           playlist.push({ url, tsMs, label: fr.name, minuteKey, kind: 'jpeg' });
         }
       }
