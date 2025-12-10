@@ -644,10 +644,14 @@ def api_create_clip(id):
             # Run ffmpeg: concat -> trim via ss/t
             # We re-encode for precise cut boundaries
             cmd = [
-                'ffmpeg', '-y',
+                'ffmpeg', '-hide_banner', '-loglevel', 'warning', '-y',
                 '-f', 'concat', '-safe', '0', '-i', list_path,
                 '-ss', f"{offset_in_first:.3f}", '-t', f"{total_duration:.3f}",
                 '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+                # Better compatibility for MP4 playback
+                '-pix_fmt', 'yuv420p',
+                # Make MP4 start fast for streaming over HTTP
+                '-movflags', '+faststart',
                 '-an', out_path
             ]
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
