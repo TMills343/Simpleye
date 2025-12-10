@@ -298,22 +298,11 @@ class HLSRecorder(threading.Thread):
         keyint = max(1, min(2 * self.segment_seconds, 2)) * 30  # rough for 30fps sources
         bitrate = f"{self.bitrate_kbps}k"
         cmd = [
-            # Reduce log noise and startup overhead
-            'ffmpeg', '-hide_banner', '-loglevel', 'warning',
-            # Input/network robustness and low-latency
-            '-stimeout', '5000000',  # 5s socket timeout (microseconds)
-            '-rtsp_transport', 'tcp',
-            '-fflags', '+nobuffer',
-            '-flags', 'low_delay',
-            '-analyzeduration', '0',
-            '-probesize', '32k',
-            '-i', self.rtsp_url,
+            'ffmpeg', '-y', '-rtsp_transport', 'tcp', '-i', self.rtsp_url,
             '-an',
             '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
             '-b:v', bitrate, '-maxrate', bitrate, '-bufsize', str(self.bitrate_kbps * 2) + 'k',
             '-g', str(keyint), '-sc_threshold', '0',
-            # Use wallclock to align segment Program Date Time with real time
-            '-use_wallclock_as_timestamps', '1',
             '-hls_time', str(self.segment_seconds), '-hls_list_size', '0',
             # Add program_date_time to expose wall-clock per-segment timestamps for precise seeking
             '-hls_flags', 'independent_segments+program_date_time',
