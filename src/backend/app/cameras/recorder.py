@@ -194,8 +194,13 @@ class RecorderManager:
                 active_ids.add(cid)
                 # Determine recording mode (default to HLS if unset)
                 mode = (c.get('recording_mode') or 'hls').lower()
+                # Everything the recorder is built from; if any of it changes (e.g. the
+                # RTSP URL is edited), restart the recorder so the change takes effect.
+                settings = (mode, rtsp) + tuple(
+                    c.get(k) for k in ('hls_bitrate_kbps', 'hls_segment_seconds',
+                                       'max_fps', 'jpeg_quality', 'connect_timeout'))
                 th = self._threads.get(cid)
-                if th is None or not th.is_alive() or getattr(th, 'mode', 'jpeg') != mode:
+                if th is None or not th.is_alive() or getattr(th, 'settings', None) != settings:
                     # Stop existing
                     if th is not None and hasattr(th, 'stop'):
                         try:
@@ -216,6 +221,7 @@ class RecorderManager:
                             seg_seconds = 2
                         rec = HLSRecorder(cid, rtsp, self.out_dir, bitrate_kbps=bitrate_kbps, segment_seconds=seg_seconds)
                         rec.mode = 'hls'  # type: ignore
+                        rec.settings = settings  # type: ignore
                         self._threads[cid] = rec
                         rec.start()
                     else:
@@ -225,6 +231,7 @@ class RecorderManager:
                         rec2 = CameraRecorder(cid, rtsp, self.out_dir, fps=fps, jpeg_quality=jpeg_q,
                                               connect_timeout=connect_timeout)
                         rec2.mode = 'jpeg'  # type: ignore
+                        rec2.settings = settings  # type: ignore
                         self._threads[cid] = rec2
                         rec2.start()
             # Stop threads for cameras no longer active
