@@ -24,4 +24,7 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD python -c "import urllib
 
 # Default to gunicorn in production; point to the correct app factory
 # Use the package path where create_app() is defined
-CMD ["gunicorn", "-w", "3", "-b", "0.0.0.0:8000", "--timeout", "0", "--graceful-timeout", "0", "src.backend.app:create_app()"]
+# Threaded workers: each live MJPEG stream holds a request open, so sync workers
+# (one request each) would let a few open viewers block the whole UI.
+# Only one worker records (see the lock in cameras/recorder.py).
+CMD ["gunicorn", "--worker-class", "gthread", "-w", "2", "--threads", "16", "-b", "0.0.0.0:8000", "--timeout", "0", "--graceful-timeout", "0", "src.backend.app:create_app()"]

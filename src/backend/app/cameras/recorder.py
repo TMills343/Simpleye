@@ -11,6 +11,17 @@ try:
 except Exception:  # pragma: no cover
     cv2 = None  # type: ignore
 
+try:
+    import fcntl  # type: ignore
+except ImportError:  # pragma: no cover - Windows local dev
+    fcntl = None  # type: ignore
+
+# Lock file (inside RECORDINGS_DIR) that ensures only one process records at a time.
+# Gunicorn runs create_app() in every worker, so without this each worker would start
+# its own RecorderManager and every camera would be recorded once per worker.
+_LOCK_FILENAME = ".recorder.lock"
+_LOCK_RETRY_SECONDS = 10.0
+
 
 def _ensure_dir(path: str):
     os.makedirs(path, exist_ok=True)
@@ -117,11 +128,39 @@ class RecorderManager:
         self._ctl_stop = threading.Event()
         self._supervisor = threading.Thread(target=self._supervise, daemon=True)
         self._janitor = threading.Thread(target=self._janitor_loop, daemon=True)
+        self._lock_fd: Optional[int] = None
 
     def start(self):
         self._ctl_stop.clear()
-        self._supervisor.start()
-        self._janitor.start()
+        # Only the process holding the lock records. The others keep retrying so that
+        # if the recording worker dies (e.g. gunicorn restarts it), another takes over.
+        threading.Thread(target=self._acquire_lock_then_run, daemon=True).start()
+
+    def _try_lock(self) -> bool:
+        if fcntl is None:
+            return True
+        path = os.path.join(self.out_dir, _LOCK_FILENAME)
+        try:
+            fd = os.open(path, os.O_RDWR | os.O_CREAT, 0o644)
+        except OSError as e:
+            print(f"[Recorder] Cannot open lock file {path}: {e}")
+            return False
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            return False
+        self._lock_fd = fd
+        return True
+
+    def _acquire_lock_then_run(self):
+        while not self._ctl_stop.is_set():
+            if self._try_lock():
+                print(f"[Recorder] pid {os.getpid()} holds the recorder lock; starting recording")
+                self._supervisor.start()
+                self._janitor.start()
+                return
+            self._ctl_stop.wait(_LOCK_RETRY_SECONDS)
 
     def stop(self):
         self._ctl_stop.set()
@@ -131,6 +170,12 @@ class RecorderManager:
             except Exception:
                 pass
         # don't join indefinitely in teardown
+        if self._lock_fd is not None:
+            try:
+                os.close(self._lock_fd)  # releases the flock
+            except OSError:
+                pass
+            self._lock_fd = None
 
     def _supervise(self):
         # Periodically sync recorders with DB state
@@ -149,8 +194,13 @@ class RecorderManager:
                 active_ids.add(cid)
                 # Determine recording mode (default to HLS if unset)
                 mode = (c.get('recording_mode') or 'hls').lower()
+                # Everything the recorder is built from; if any of it changes (e.g. the
+                # RTSP URL is edited), restart the recorder so the change takes effect.
+                settings = (mode, rtsp) + tuple(
+                    c.get(k) for k in ('hls_bitrate_kbps', 'hls_segment_seconds',
+                                       'max_fps', 'jpeg_quality', 'connect_timeout'))
                 th = self._threads.get(cid)
-                if th is None or not th.is_alive() or getattr(th, 'mode', 'jpeg') != mode:
+                if th is None or not th.is_alive() or getattr(th, 'settings', None) != settings:
                     # Stop existing
                     if th is not None and hasattr(th, 'stop'):
                         try:
@@ -171,6 +221,7 @@ class RecorderManager:
                             seg_seconds = 2
                         rec = HLSRecorder(cid, rtsp, self.out_dir, bitrate_kbps=bitrate_kbps, segment_seconds=seg_seconds)
                         rec.mode = 'hls'  # type: ignore
+                        rec.settings = settings  # type: ignore
                         self._threads[cid] = rec
                         rec.start()
                     else:
@@ -180,6 +231,7 @@ class RecorderManager:
                         rec2 = CameraRecorder(cid, rtsp, self.out_dir, fps=fps, jpeg_quality=jpeg_q,
                                               connect_timeout=connect_timeout)
                         rec2.mode = 'jpeg'  # type: ignore
+                        rec2.settings = settings  # type: ignore
                         self._threads[cid] = rec2
                         rec2.start()
             # Stop threads for cameras no longer active
