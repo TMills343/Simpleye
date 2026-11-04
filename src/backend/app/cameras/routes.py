@@ -12,6 +12,7 @@ from flask import send_from_directory
 from datetime import timedelta
 from math import ceil
 import tempfile
+import shutil
 import subprocess
 import json
 from werkzeug.exceptions import Forbidden
@@ -347,7 +348,7 @@ def api_list_recordings(id):
                                             elif not line.startswith('#'):
                                                 # This is a segment URI
                                                 cur_uri = line
-                                                if cur_uri.endswith('.ts'):
+                                                if cur_uri.endswith(SEGMENT_EXTS):
                                                     files.append(cur_uri)
                                                     p_segments.append({
                                                         "name": cur_uri,
@@ -360,7 +361,7 @@ def api_list_recordings(id):
                                 except Exception:
                                     # If parsing fails, just list files below as fallback
                                     for fn in names:
-                                        if fn.endswith('.m3u8') or fn.endswith('.ts'):
+                                        if fn.endswith('.m3u8') or fn.endswith(SEGMENT_EXTS):
                                             files.append(fn)
                             else:
                                 for fn in names:
@@ -426,6 +427,10 @@ def get_recording_file(id, relpath):
         mimetype = 'application/vnd.apple.mpegurl'
     elif filename.endswith('.ts'):
         mimetype = 'video/mp2t'
+    elif filename.endswith('.m4s'):
+        mimetype = 'video/iso.segment'
+    elif filename.endswith('.mp4'):
+        mimetype = 'video/mp4'
     elif filename.endswith('.jpg'):
         mimetype = 'image/jpeg'
     return send_from_directory(target_dir, filename, mimetype=mimetype)
@@ -434,6 +439,23 @@ def get_recording_file(id, relpath):
 # -----------------------------
 # Clips helpers and endpoints
 # -----------------------------
+
+# Recorded segment types: MPEG-TS (transcoded) and fragmented MP4 (stream copy)
+SEGMENT_EXTS = ('.ts', '.m4s')
+
+
+def _parse_map_uri(line: str):
+    """Return the URI from an '#EXT-X-MAP:URI="init.mp4"' playlist line."""
+    try:
+        attrs = line.split(':', 1)[1]
+        for part in attrs.split(','):
+            k, _, v = part.partition('=')
+            if k.strip() == 'URI':
+                return v.strip().strip('"')
+    except Exception:
+        pass
+    return None
+
 
 def _safe_clip_dir(cam_id: str, ts: datetime) -> str:
     base = _recordings_root()
@@ -491,11 +513,15 @@ def _collect_segments_for_window(cam_id: str, start_dt: datetime, end_dt: dateti
             with open(pl, 'r', encoding='utf-8', errors='ignore') as pf:
                 cur_pdt = None
                 last_dur = None
+                init_path = None
                 for raw in pf:
                     line = raw.strip()
                     if not line:
                         continue
-                    if line.startswith('#EXT-X-PROGRAM-DATE-TIME:'):
+                    if line.startswith('#EXT-X-MAP:'):
+                        uri = _parse_map_uri(line)
+                        init_path = os.path.join(mip, uri) if uri else None
+                    elif line.startswith('#EXT-X-PROGRAM-DATE-TIME:'):
                         try:
                             cur_pdt = line.split(':',1)[1].strip()
                         except Exception:
@@ -510,7 +536,7 @@ def _collect_segments_for_window(cam_id: str, start_dt: datetime, end_dt: dateti
                             last_dur = None
                     elif not line.startswith('#'):
                         # segment uri
-                        if not line.endswith('.ts'):
+                        if not line.endswith(SEGMENT_EXTS):
                             continue
                         start_ms = None
                         if cur_pdt:
@@ -525,6 +551,8 @@ def _collect_segments_for_window(cam_id: str, start_dt: datetime, end_dt: dateti
                                 'path': abs_path,
                                 'start_ms': start_ms,
                                 'dur_s': dur_s,
+                                # fMP4 segments need their minute's init segment to be decodable
+                                'init': init_path,
                             })
                         # reset
                         last_dur = None
@@ -627,13 +655,21 @@ def api_create_clip(id):
     first = segs[0]
     offset_in_first = max(0.0, (win_start_ms - first['start_ms']) / 1000.0)
     total_duration = max(0.1, (end_dt.timestamp() - start_dt.timestamp()))
-    # Prepare concat list file
     try:
         with tempfile.TemporaryDirectory() as td:
-            list_path = os.path.join(td, 'list.txt')
-            with open(list_path, 'w', encoding='utf-8') as lf:
-                for s in segs:
-                    lf.write(f"file '{s['path'].replace("'","'\\''")}'\n")
+            # One input file per minute (each minute is a separate ffmpeg recording run):
+            # fMP4 minutes are their init segment + fragments, MPEG-TS minutes are their
+            # segments joined byte-for-byte. Both are valid standalone files.
+            inputs = []
+            for minute_dir in dict.fromkeys(os.path.dirname(s_['path']) for s_ in segs):
+                parts = [s_ for s_ in segs if os.path.dirname(s_['path']) == minute_dir]
+                init = parts[0].get('init')
+                merged = os.path.join(td, f"part_{len(inputs):04d}" + ('.mp4' if init else '.ts'))
+                with open(merged, 'wb') as out_f:
+                    for part in ([init] if init else []) + [s_['path'] for s_ in parts]:
+                        with open(part, 'rb') as in_f:
+                            shutil.copyfileobj(in_f, out_f)
+                inputs.append(merged)
             # Output path
             clip_dir = _safe_clip_dir(id, start_dt)
             default_base = f"{start_dt.isoformat(timespec='seconds')}__{end_dt.isoformat(timespec='seconds')}"
@@ -641,13 +677,21 @@ def api_create_clip(id):
             # Ensure .mp4 extension
             fname = base_name if base_name.lower().endswith('.mp4') else (base_name + '.mp4')
             out_path = os.path.join(clip_dir, fname)
-            # Run ffmpeg: concat -> trim via ss/t
-            # We re-encode for precise cut boundaries
-            cmd = [
-                'ffmpeg', '-y',
-                '-f', 'concat', '-safe', '0', '-i', list_path,
+            # Join with the concat *filter*, which decodes each minute on its own: minutes can
+            # differ in codec (H.264 .ts vs stream-copied H.265 fMP4) and each restarts its
+            # timestamps, which the concat demuxer can't handle. Then trim via ss/t.
+            # We re-encode for precise cut boundaries.
+            cmd = ['ffmpeg', '-y']
+            for path in inputs:
+                cmd += ['-i', path]
+            graph = ''.join(f"[{i}:v:0]setsar=1[v{i}];" for i in range(len(inputs)))
+            graph += ''.join(f"[v{i}]" for i in range(len(inputs))) + f"concat=n={len(inputs)}:v=1:a=0[out]"
+            cmd += [
+                '-filter_complex', graph, '-map', '[out]',
                 '-ss', f"{offset_in_first:.3f}", '-t', f"{total_duration:.3f}",
                 '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+                # 8-bit 4:2:0 so clips from 10-bit H.265 cameras still play in browsers
+                '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
                 '-an', out_path
             ]
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -885,18 +929,24 @@ def api_concat_hls_playlist(id):
     media_seq = 0
     first_pdt = None
     first = True  # first segment overall
+    uses_fmp4 = False
     for dt, rel, mip in minute_paths:
         pl = os.path.join(mip, 'index.m3u8')
         try:
             with open(pl, 'r', encoding='utf-8', errors='ignore') as pf:
                 last_dur = None
                 cur_pdt = None
+                map_uri = None
                 minute_first = True  # first segment within this minute
                 for raw in pf:
                     line = raw.strip()
                     if not line:
                         continue
-                    if line.startswith('#EXT-X-TARGETDURATION:'):
+                    if line.startswith('#EXT-X-MAP:'):
+                        map_uri = _parse_map_uri(line)
+                        if map_uri:
+                            uses_fmp4 = True
+                    elif line.startswith('#EXT-X-TARGETDURATION:'):
                         try:
                             td = float(line.split(':',1)[1])
                             if td > max_target:
@@ -935,6 +985,9 @@ def api_concat_hls_playlist(id):
                             lines.append('#EXT-X-DISCONTINUITY')
                             if cur_pdt:
                                 lines.append(f"#EXT-X-PROGRAM-DATE-TIME:{cur_pdt}")
+                        if minute_first and map_uri:
+                            # Each minute is a separate ffmpeg run with its own init segment
+                            lines.append(f'#EXT-X-MAP:URI="/cameras/{id}/recordings/{rel}/{map_uri}"')
                         # After handling boundary, mark minute as started
                         minute_first = False
                         # Append segment
@@ -946,6 +999,8 @@ def api_concat_hls_playlist(id):
         except Exception:
             continue
 
+    if uses_fmp4:
+        lines[1] = "#EXT-X-VERSION:7"  # EXT-X-MAP with fMP4 segments
     lines.append('#EXT-X-ENDLIST')
     body = "\n".join(lines) + "\n"
     return Response(body, mimetype='application/vnd.apple.mpegurl')
