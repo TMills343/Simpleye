@@ -41,11 +41,11 @@ class CameraRecorder(threading.Thread):
         self.fps = max(0.5, float(fps))
         self.jpeg_quality = max(1, min(100, int(jpeg_quality)))
         self.connect_timeout = connect_timeout
-        self._stop = threading.Event()
+        self._stop_evt = threading.Event()  # not _stop: that shadows Thread._stop()
         self._cap = None
 
     def stop(self):
-        self._stop.set()
+        self._stop_evt.set()
         try:
             if self._cap is not None:
                 self._cap.release()
@@ -58,7 +58,7 @@ class CameraRecorder(threading.Thread):
         cap = cv2.VideoCapture(self.rtsp_url, cv2.CAP_FFMPEG)  # type: ignore[attr-defined]
         start = time.time()
         while not cap.isOpened():
-            if self._stop.is_set():
+            if self._stop_evt.is_set():
                 cap.release()
                 return None
             if time.time() - start > self.connect_timeout:
@@ -76,19 +76,22 @@ class CameraRecorder(threading.Thread):
         frame_interval = 1.0 / self.fps
         last = 0.0
         self._cap = self._open()
-        while not self._stop.is_set():
-            now = time.time()
-            if now - last < frame_interval:
-                time.sleep(0.002)
-                continue
-            last = now
+        while not self._stop_evt.is_set():
             if self._cap is None:
                 # Try reconnect
                 self._cap = self._open()
                 if self._cap is None:
                     time.sleep(1.0)
                     continue
-            ok, frame = self._cap.read()
+            # Pull every frame (blocks at the camera's rate) so we stay current instead of
+            # falling behind and buffering; only convert/encode the frames we keep.
+            ok = self._cap.grab()
+            if ok:
+                now = time.time()
+                if now - last < frame_interval:
+                    continue
+                last = now
+                ok, frame = self._cap.retrieve()
             if not ok:
                 # reconnect on failure
                 try:
@@ -310,11 +313,37 @@ class RecorderManager:
                                         pass
 
 
+# Codecs that browsers can play from fMP4 HLS, mapped to the sample-entry tag to write.
+# "hvc1" (not ffmpeg's default "hev1") is required for H.265 playback in Safari/Chrome.
+COPY_CODEC_TAGS = {'h264': 'avc1', 'hevc': 'hvc1'}
+# ffmpeg exiting sooner than this after start counts as a failure and triggers backoff.
+_FAST_FAIL_SECONDS = 10.0
+_MAX_BACKOFF_SECONDS = 60.0
+# Re-check the camera's codec periodically in case it is changed on the camera itself.
+_CODEC_RECHECK_SECONDS = 15 * 60
+
+
+def probe_video_codec(rtsp_url: str, timeout: float = 20.0) -> Optional[str]:
+    """Return the codec name of the first video stream (e.g. 'h264', 'hevc'), or None."""
+    cmd = ['ffprobe', '-v', 'error', '-rtsp_transport', 'tcp', '-select_streams', 'v:0',
+           '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', rtsp_url]
+    try:
+        out = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                             timeout=timeout, text=True).stdout
+    except Exception:
+        return None
+    lines = [ln.strip().lower() for ln in out.splitlines() if ln.strip()]
+    return lines[0] if lines else None
+
+
 class HLSRecorder(threading.Thread):
     """Record RTSP to HLS segments using ffmpeg, rolling output per minute.
 
-    Layout per camera:
-      <out_dir>/<cam_id>/YYYY/MM/DD/HH/MM/index.m3u8 + seg_*.ts
+    H.264 and H.265 sources are stream-copied: no decoding or re-encoding, so recording
+    costs almost no CPU and keeps the camera's original quality. Layout per minute:
+      <out_dir>/<cam_id>/YYYY/MM/DD/HH/MM/index.m3u8 + init.mp4 + seg_*.m4s
+    Other codecs are transcoded to H.264 at bitrate_kbps (the previous behaviour):
+      <out_dir>/<cam_id>/YYYY/MM/DD/HH/MM/index.m3u8 + index*.ts
     """
     def __init__(self, cam_id: str, rtsp_url: str, out_dir: str, bitrate_kbps: int = 1500, segment_seconds: int = 2):
         super().__init__(daemon=True)
@@ -323,16 +352,25 @@ class HLSRecorder(threading.Thread):
         self.out_dir = out_dir
         self.bitrate_kbps = max(100, int(bitrate_kbps))
         self.segment_seconds = max(1, int(segment_seconds))
-        self._stop = threading.Event()
+        # Not named _stop: that would shadow threading.Thread._stop().
+        self._stop_evt = threading.Event()
         self._proc: Optional[subprocess.Popen] = None
+        self._codec: Optional[str] = None
+        self._codec_checked_at = 0.0
+        self._started_at = 0.0
+        self._failures = 0
+        self._retry_at = 0.0
 
     def stop(self):
-        self._stop.set()
+        self._stop_evt.set()
         try:
             if self._proc and self._proc.poll() is None:
                 self._proc.terminate()
         except Exception:
             pass
+
+    def _log(self, msg: str):
+        print(f"[Recorder] camera {self.cam_id}: {msg}", flush=True)
 
     def _minute_dir(self, ts: datetime) -> str:
         return os.path.join(
@@ -341,59 +379,122 @@ class HLSRecorder(threading.Thread):
             ts.strftime('%Y'), ts.strftime('%m'), ts.strftime('%d'), ts.strftime('%H'), ts.strftime('%M')
         )
 
-    def _start_ffmpeg(self, out_dir: str):
-        _ensure_dir(out_dir)
+    def _build_cmd(self, out_dir: str):
         playlist = os.path.join(out_dir, 'index.m3u8')
-        # Build ffmpeg command
-        # - Use TCP for RTSP to be more reliable
-        # - Force keyframes ~ every 1s for better seeking (-g and -keyint_min)
-        keyint = max(1, min(2 * self.segment_seconds, 2)) * 30  # rough for 30fps sources
-        bitrate = f"{self.bitrate_kbps}k"
         cmd = [
-            'ffmpeg', '-y', '-rtsp_transport', 'tcp', '-i', self.rtsp_url,
-            '-an',
-            '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
-            '-b:v', bitrate, '-maxrate', bitrate, '-bufsize', str(self.bitrate_kbps * 2) + 'k',
-            '-g', str(keyint), '-sc_threshold', '0',
-            '-hls_time', str(self.segment_seconds), '-hls_list_size', '0',
-            # Add program_date_time to expose wall-clock per-segment timestamps for precise seeking
-            '-hls_flags', 'independent_segments+program_date_time',
-            '-f', 'hls', playlist
+            'ffmpeg', '-hide_banner', '-loglevel', 'error', '-y',
+            # TCP for RTSP is more reliable; genpts fills in missing timestamps from some cameras
+            '-rtsp_transport', 'tcp', '-fflags', '+genpts', '-i', self.rtsp_url,
+            '-map', '0:v:0', '-an',
         ]
+        tag = COPY_CODEC_TAGS.get(self._codec or '')
+        if tag:
+            cmd += ['-c:v', 'copy', '-tag:v', tag]
+        else:
+            # Force keyframes so segments can be cut at segment_seconds
+            keyint = max(1, min(2 * self.segment_seconds, 2)) * 30  # rough for 30fps sources
+            bitrate = f"{self.bitrate_kbps}k"
+            cmd += [
+                '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'zerolatency',
+                '-b:v', bitrate, '-maxrate', bitrate, '-bufsize', str(self.bitrate_kbps * 2) + 'k',
+                '-g', str(keyint), '-sc_threshold', '0',
+            ]
+        cmd += [
+            '-f', 'hls', '-hls_time', str(self.segment_seconds), '-hls_list_size', '0',
+            # program_date_time exposes wall-clock per-segment timestamps for precise seeking
+            '-hls_flags', 'independent_segments+program_date_time',
+        ]
+        if tag:
+            # Stream-copied segments are cut at the camera's own keyframes.
+            cmd += [
+                '-hls_segment_type', 'fmp4', '-hls_fmp4_init_filename', 'init.mp4',
+                '-hls_segment_filename', os.path.join(out_dir, 'seg_%05d.m4s'),
+            ]
+        cmd.append(playlist)
+        return cmd
+
+    def _start_ffmpeg(self, out_dir: str) -> bool:
+        if self._codec is None:
+            codec = probe_video_codec(self.rtsp_url)
+            if codec is None:
+                self._schedule_retry("cannot read the stream (camera unreachable or bad URL)")
+                return False
+            self._set_codec(codec)
+        if self._stop_evt.is_set():
+            return False
+        _ensure_dir(out_dir)
         try:
-            self._proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
+            self._proc = subprocess.Popen(self._build_cmd(out_dir), stdin=subprocess.DEVNULL,
+                                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
             self._proc = None
+            self._schedule_retry(f"cannot start ffmpeg: {e}")
+            return False
+        self._started_at = time.time()
+        return True
+
+    def _set_codec(self, codec: str):
+        if codec != self._codec:
+            how = 'stream copy' if codec in COPY_CODEC_TAGS else f'transcode to H.264 at {self.bitrate_kbps}kbps'
+            self._log(f"video codec {codec}; recording with {how}")
+        self._codec = codec
+        self._codec_checked_at = time.time()
+
+    def _recheck_codec(self):
+        """Probe while ffmpeg keeps recording; restart only if the camera's codec changed."""
+        self._codec_checked_at = time.time()
+        codec = probe_video_codec(self.rtsp_url)
+        if codec and codec != self._codec:
+            self._set_codec(codec)
+            self._terminate()
+
+    def _schedule_retry(self, reason: str):
+        """Back off exponentially so a broken camera doesn't respawn ffmpeg twice a second."""
+        self._failures += 1
+        delay = min(2 ** self._failures, _MAX_BACKOFF_SECONDS)
+        self._retry_at = time.time() + delay
+        self._log(f"{reason}; retrying in {delay:.0f}s")
+
+    def _terminate(self):
+        proc, self._proc = self._proc, None
+        if proc is None or proc.poll() is not None:
+            return
+        try:
+            proc.terminate()
+            proc.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=1.0)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def run(self):
         if not self.rtsp_url:
             return
         current_minute = None
-        while not self._stop.is_set():
-            now = datetime.utcnow()
-            minute_dir = self._minute_dir(now)
-            if current_minute != minute_dir:
-                # rotate: stop previous ffmpeg and start new in the new minute folder
-                if self._proc and self._proc.poll() is None:
-                    try:
-                        self._proc.terminate()
-                        # give it a moment to exit
-                        for _ in range(10):
-                            if self._proc.poll() is not None:
-                                break
-                            time.sleep(0.1)
-                    except Exception:
-                        pass
-                self._start_ffmpeg(minute_dir)
-                current_minute = minute_dir
-            # If ffmpeg crashed, try restart in the same minute dir
-            if self._proc is None or self._proc.poll() is not None:
-                self._start_ffmpeg(current_minute or minute_dir)
-            # Sleep a bit, but wake to minute boundary
-            time.sleep(0.5)
-        # Teardown
-        try:
-            if self._proc and self._proc.poll() is None:
-                self._proc.terminate()
-        except Exception:
-            pass
+        while not self._stop_evt.is_set():
+            minute_dir = self._minute_dir(datetime.utcnow())
+            if self._proc is not None and self._proc.poll() is not None:
+                # ffmpeg exited on its own (camera dropped, stream error, ...)
+                code = self._proc.returncode
+                self._proc = None
+                if self._stop_evt.is_set():
+                    break
+                if time.time() - self._started_at < _FAST_FAIL_SECONDS:
+                    self._codec = None  # re-probe in case the stream changed
+                    self._schedule_retry(f"ffmpeg exited after {time.time() - self._started_at:.0f}s (code {code})")
+                else:
+                    self._failures = 0  # it was recording fine; restart right away
+            if self._proc is not None and time.time() - self._codec_checked_at > _CODEC_RECHECK_SECONDS:
+                self._recheck_codec()
+            if self._proc is not None and current_minute != minute_dir:
+                # Rotate into the new minute folder
+                self._terminate()
+            if self._proc is None and time.time() >= self._retry_at:
+                if self._start_ffmpeg(minute_dir):
+                    current_minute = minute_dir
+            self._stop_evt.wait(0.5)
+        self._terminate()

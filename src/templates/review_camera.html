@@ -261,6 +261,12 @@
   let lastShownIdx = -1;
   // HLS unified playback across minutes
   let hls = null; // hls.js instance
+  // Prefer hls.js wherever Media Source Extensions work: browsers' built-in HLS players can
+  // stall on playlists that switch codec/container mid-way (e.g. old H.264 .ts minutes
+  // followed by stream-copied H.265 fMP4 minutes). Native HLS stays as the fallback (iPhone).
+  function preferNativeHls(){
+    return !(window.Hls && window.Hls.isSupported()) && videoEl.canPlayType('application/vnd.apple.mpegurl');
+  }
   let unifiedHlsUrl = null;
   let hlsRangeStartMs = null; // absolute wall-clock ms corresponding to video currentTime = 0
   let hlsAny = false;
@@ -545,7 +551,7 @@
       if (currentUrl !== srcUrl){
         currentUrl = srcUrl;
         // Attach HLS
-        if (videoEl.canPlayType('application/vnd.apple.mpegurl')){
+        if (preferNativeHls()){
           videoEl.src = srcUrl;
           videoEl.play().catch(()=>{});
         } else {
@@ -790,7 +796,7 @@
         try { videoEl.playbackRate = sp; } catch(e) {}
         videoEl.play().catch(()=>{});
       };
-      if (videoEl.canPlayType('application/vnd.apple.mpegurl')){
+      if (preferNativeHls()){
         currentUrl = srcUrl;
         videoEl.src = srcUrl;
         videoEl.onloadedmetadata = ()=>{ doSeek(); videoEl.onloadedmetadata = null; };
@@ -1037,7 +1043,7 @@
 </script>
 
 <!-- hls.js for HLS playback (non-Safari browsers) -->
-<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.14/dist/hls.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.15/dist/hls.min.js"></script>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
